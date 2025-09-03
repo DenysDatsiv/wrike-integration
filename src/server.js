@@ -30,14 +30,20 @@ app.use( '/dotcms',dotcmsRouter );
 app.use( '/back-end',backendRouter );
 app.use( '/wrike',wrikeRoutes );
 
-app.listen( config.server.port,async () => {
-    console.log( `Server is running at http://localhost:${config.server.port} in ${config.env} mode` );
+app.listen(PORT, async () => {
+    console.log(`✅ Server on http://localhost:${PORT}`);
+    let publicBaseUrl = (PUBLIC_BASE_URL || "").replace(/\/$/, "");
+    console.log(`Public base (env): ${publicBaseUrl || "(not set)"}`);
 
-    let publicBaseUrl = (process.env.PUBLIC_BASE_URL || "").replace( /\/$/,"" );
+    try {
+        if (LT_ENABLE || !publicBaseUrl) {
+            const tunnel = await startLocalTunnel();
+            publicBaseUrl = (tunnel?.url || "").replace(/\/$/, "");
+            console.log(`   Public base (tunnel): ${publicBaseUrl}`);
+        }
+        await ensureWebhookRegistered(publicBaseUrl);
 
-    try{
-        await ensureWebhookRegistered( publicBaseUrl );
-    }catch ( e ){
-        console.warn( "⚠️ Webhook auto-registration failed:",e?.response?.data || e?.message || e );
+    } catch (e) {
+        console.warn("⚠️ Failed:", e?.response?.data || e?.message || e);
     }
-} );
+});
