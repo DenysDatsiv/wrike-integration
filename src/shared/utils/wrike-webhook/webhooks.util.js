@@ -2,6 +2,7 @@
 // ↑ переконайтесь у коректному шляху (../utils/helpers.util). У вашому проєкті це "../shared/utils/helpers.util"
 
 const {wrike, WEBHOOK_SECRET, PUBLIC_BASE_URL} = require("../../../configurations/env.variables");
+const {toPlainError} = require("./helpers.util");
 const WANT_EVENTS = ["TaskCreated", "CommentAdded"];
 
 /**

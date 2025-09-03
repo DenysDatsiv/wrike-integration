@@ -8,8 +8,8 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
 let PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
 
-const LT_ENABLE = String(process.env.LT_ENABLE || "0") === "1";
-const LT_SUBDOMAIN = process.env.LT_SUBDOMAIN || undefined;
+const LT_ENABLE = String(1 || "0") === "1";
+const LT_SUBDOMAIN = "my-webhook-3030" || undefined;
 
 if (!WRIKE_API_TOKEN) console.warn("⚠️  WRIKE_API_TOKEN не задано");
 if (!WEBHOOK_SECRET) console.warn("⚠️  WEBHOOK_SECRET не задано");
