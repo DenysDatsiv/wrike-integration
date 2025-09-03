@@ -13,6 +13,7 @@ const {validateRequired,buildValidationComment} = require( "../../validations/wr
 const {wrikeApiClient} = require( "../../configurations/httpClients" );
 const {createSlug,hmacSha256,sleep} = require( "../../shared/utils/wrike-webhook/common.util" );
 const {createInsight} = require( "../../services/dotcms/dotcms.service" );
+const {wrike} = require("../../configurations/env.variables");
 
 const taskState = new Map();
 const seen = new Set();
