@@ -33,11 +33,13 @@ app.listen(PORT, async () => {
     console.log(`Public base (env): ${publicBaseUrl || "(not set)"}`);
 
     try {
-        if (LT_ENABLE || !publicBaseUrl) {
-            const tunnel = await startLocalTunnel();
-            publicBaseUrl = (tunnel?.url || "").replace(/\/$/, "");
+        // if (LT_ENABLE || !publicBaseUrl) {
+        //     const tunnel = await startLocalTunnel();
+        //     publicBaseUrl = (tunnel?.url || "").replace(/\/$/, "");
+        //     console.log(`   Public base (tunnel): ${publicBaseUrl}`);
+        // }
             console.log(`   Public base (tunnel): ${publicBaseUrl}`);
-        }
+
         await ensureWebhookRegistered(publicBaseUrl);
 
     } catch (e) {
