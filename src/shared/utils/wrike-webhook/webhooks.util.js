@@ -12,7 +12,7 @@ const EVENTS_STRING = `[${WANT_EVENTS.join(",")}]`;
  * Регіструє вебхук на baseUrl (або бере PUBLIC_BASE_URL з env).
  * Порада: для Render не запускай сервер у build-команді — зроби Start Command окремо.
  */
-sync function ensureWebhookRegistered(baseUrlOverride) {
+async function ensureWebhookRegistered(baseUrlOverride) {
     const base = (baseUrlOverride || PUBLIC_BASE_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("PUBLIC_BASE_URL не задано");
     if (!WEBHOOK_SECRET) throw new Error("WEBHOOK_SECRET не задано");
