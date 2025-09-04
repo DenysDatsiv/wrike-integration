@@ -15,11 +15,9 @@ const app = express();
 app.use( cors() );
 app.set( "trust proxy",true );
 
-app.use( express.json( {
-    verify:( req,_res,buf ) => {
-        req.rawBody = buf;
-    }
-} ) );
+app.use(express.json({
+    verify: (req, _res, buf) => { req.rawBody = buf; }
+}));
 
 app.use( express.json( {strict:false} ) );
 
