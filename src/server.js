@@ -1,6 +1,3 @@
-const {loadEnv} = require( './configurations/loadEnv' );
-loadEnv( process.env.APP_ENV );
-
 const express = require( 'express' );
 const cors = require( 'cors' );
 

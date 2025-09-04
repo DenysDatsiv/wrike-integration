@@ -57,6 +57,7 @@ const normalizeExtracted = ( x ) => {
     const norm = ( v ) => (typeof v === "string" ? v.trim() : v);
     return {
         wrikeTicketId:x.wrikeTicketId,
+        identifier:x.identifier,
         title:norm( x.title ),
         titleUrlSlug:norm( x.titleUrlSlug ),
         summary:norm( x.summary ),
@@ -65,6 +66,7 @@ const normalizeExtracted = ( x ) => {
         mediaType:norm( (x.mediaType || "").toLowerCase() ),
         metaDescription:norm( x.metaDescription ),
         metaTitle:norm( x.metaTitle ),
+        allowOnlyUpdate:x.allowOnlyUpdate
     };
 };
 module.exports = {

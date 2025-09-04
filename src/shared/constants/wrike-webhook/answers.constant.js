@@ -1,7 +1,7 @@
 const {formatUsDateTime} = require( "../../utils/wrike-webhook/time-format.util" );
 
 const MSG = {
-    alreadyCreated: (iso) => `⚠️ Article already created on ${formatUsDateTime(iso)}.`,
+    alreadyCreated: `⚠️ Article already created.`,
     created: 'Article created ✅',
     pleaseCreateFirst: 'Please create article first❗',
     updated: 'Article updated 📝',

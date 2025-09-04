@@ -4,6 +4,7 @@ const {generatePdf} = require( '../controllers/wrike/pdf.controller' );
 const { uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId} = require( '../controllers/wrike/wrike.controller' );
 const {extractFileNameFromUrl} = require( "../shared/utils/article-name-extracting" );
 const {handleWrikeWebhook} = require( "../controllers/wrike/wrike-webhook.controller" );
+const {dotcmsApiClient} = require("../configurations/httpClients");
 
 
 router.post( '/send-for-review',async ( req,res ) => {
@@ -47,6 +48,5 @@ router.post( '/update-status',async ( req,res ) => {
 });
 
 router.post("/webhook", handleWrikeWebhook);
-
 
 module.exports = router;
