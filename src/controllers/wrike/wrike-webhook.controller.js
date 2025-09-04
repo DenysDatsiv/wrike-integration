@@ -103,14 +103,12 @@ async function getContentletByIdentifier(identifier) {
 /**
  * Update contentlet by identifier
  */
-// залиш як є
 async function getContentletByIdentifier(identifier) {
     const url = `/api/content/id/${encodeURIComponent(identifier)}`;
     const { data } = await dotcmsApiClient.get(url);
     return data;
 }
 
-// ✅ НОВА версія з whitelist та нормалізацією
 async function updateContentletByIdentifier(identifier, body) {
     // 1) Отримати поточний контентлет
     const existing = await getContentletByIdentifier(identifier);
@@ -119,8 +117,7 @@ async function updateContentletByIdentifier(identifier, body) {
     }
     const current = existing.contentlets[0];
 
-    // 2) Whitelist полів, які реально оновлюються в твоєму сценарії
-    //    (доповни/скороти за потреби — головне НЕ тягнути масиви/об’єкти)
+    // 2) Whitelist полів
     const ALLOWED_KEYS = new Set([
         "title",
         "titleUrlSlug",
@@ -131,49 +128,45 @@ async function updateContentletByIdentifier(identifier, body) {
         "mediaType",
         "wrikeTicketId",
         "dateOfPublication",
-        // якщо треба — "category" (рядок), але не масиви на кшталт authors/teams
     ]);
 
-    // 3) Нормалізація значень: тільки примітиви (string/number/boolean)
+    // 3) Нормалізація значень до примітивів
     const normalizePrimitive = (v) => {
         if (v == null) return v;
         if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
-        // масиви/об’єкти не шлемо; якщо дуже потрібно — конвертуй у рядок явно
         return String(v);
     };
 
-    // 4) Перевести дату в ISO (yyyy-MM-dd) — як під час create
+    // 4) Дата у форматі yyyy-MM-dd
     const toISODate = (d) => {
         if (!d) return d;
-        // з body може прийти рядок "2025-09-10" або дата
         const dt = new Date(d);
-        if (isNaN(dt.getTime())) return d; // якщо вже валідний рядок, залишимо
+        if (isNaN(dt.getTime())) return d; // уже придатний рядок — лишаємо
         const yyyy = dt.getUTCFullYear();
         const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
         const dd = String(dt.getUTCDate()).padStart(2, "0");
         return `${yyyy}-${mm}-${dd}`;
     };
 
-    // 5) Скомпонувати safe payload: беремо тільки whitelisted ключі з body
+    // 5) Зібрати безпечний payload лише з дозволених ключів
     const safeFromBody = {};
     for (const [k, v] of Object.entries(body || {})) {
         if (!ALLOWED_KEYS.has(k)) continue;
         safeFromBody[k] = (k === "dateOfPublication") ? toISODate(v) : normalizePrimitive(v);
     }
 
-    // 6) Мінімум обов’язкових полів з current
-    //    (contentType/languageId dotCMS часто очікує присутніми)
+    // 6) Мінімально необхідні службові поля
     const base = {
         contentType: current.contentType,
         languageId: current.languageId,
-        // Можна додати siteOrFolder, якщо в інстансі вимога — але краще не чіпати, якщо не потрібно
+        // Якщо ваша інсталяція вимагає — додайте siteOrFolder: current.siteOrFolder
     };
 
-    // 7) Фінальний payload: НЕ розширюємо всім current, щоб не потягнути масиви
+    // 7) PUT без розширення всім current (щоб не протягнути масиви/об’єкти)
     const payload = { ...base, ...safeFromBody };
+    // console.log("UPDATE payload:", payload);
 
-    // 8) PUT оновлення
-    const url = `/api/content/id/${encodeURIComponent(identifier)}`;
+    const url = `/api/content/${encodeURIComponent(identifier)}`;
     const { data } = await dotcmsApiClient.put(url, payload);
     return data;
 }
