@@ -166,7 +166,7 @@ async function updateContentletByIdentifier(identifier, body) {
     const payload = { ...base, ...safeFromBody };
     // console.log("UPDATE payload:", payload);
 
-    const url = `/api/content/${encodeURIComponent(identifier)}`;
+    const url = `/api/content/v1/${encodeURIComponent(identifier)}`;
     const { data } = await dotcmsApiClient.put(url, payload);
     return data;
 }
