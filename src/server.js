@@ -1,5 +1,4 @@
-const {loadEnv} = require( './configurations/loadEnv' );
-loadEnv( "local");
+
 
 const express = require( 'express' );
 const cors = require( 'cors' );
