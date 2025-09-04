@@ -1,3 +1,6 @@
+const {loadEnv} = require( './configurations/loadEnv' );
+loadEnv( "local");
+
 const express = require( 'express' );
 const cors = require( 'cors' );
 
@@ -15,9 +18,11 @@ const app = express();
 app.use( cors() );
 app.set( "trust proxy",true );
 
-app.use(express.json({
-    verify: (req, _res, buf) => { req.rawBody = buf; }
-}));
+app.use( express.json( {
+    verify:( req,_res,buf ) => {
+        req.rawBody = buf;
+    }
+} ) );
 
 app.use( express.json( {strict:false} ) );
 
@@ -36,8 +41,6 @@ app.listen(PORT, async () => {
         //     publicBaseUrl = (tunnel?.url || "").replace(/\/$/, "");
         //     console.log(`   Public base (tunnel): ${publicBaseUrl}`);
         // }
-            console.log(`   Public base (tunnel): ${publicBaseUrl}`);
-
         await ensureWebhookRegistered(publicBaseUrl);
 
     } catch (e) {

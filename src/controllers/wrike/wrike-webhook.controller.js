@@ -122,7 +122,7 @@ async function updateContentletByIdentifier(identifier, body) {
     console.log(payload)
 
     // 3. Відправити апдейт
-    const url = `/api/content/${encodeURIComponent(identifier)}`;
+    const url = `/api/content/v1/${encodeURIComponent(identifier)}`;
     const { data } = await dotcmsApiClient.put(url, payload);
 
     return data;
