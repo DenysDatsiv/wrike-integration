@@ -37,6 +37,7 @@ router.post( '/update-status',async ( req,res ) => {
         console.log(req.body);
         const {taskId,customStatus} = req.body;
         const id =  await getWrikeTaskId(taskId)
+        console.log(id)
         const data = await updateWrikeTaskStatus(id, customStatus);
         return res.status(200).json({ ok: true, id, customStatus, data });
     } catch (e) {

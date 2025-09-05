@@ -65,13 +65,19 @@ async function addCommentToWrikeTask( taskId,pdfLink,fileName ){
     }
 }
 
-async function getWrikeTaskId( taskId ){
+async function getWrikeTaskId(taskId) {
+    const url = `tasks/?permalink=https://www.wrike.com/open.htm?id=${encodeURIComponent(taskId)}`;
 
-    const response = await wrikeApiClient.get( `tasks/?permalink=https://www.wrike.com/open.htm?id=${encodeURIComponent( taskId )}` );
+    const response = await wrikeApiClient.get(url);
 
-    return response.data.data[0].id;
+    const tasks = response?.data?.data;
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+        const err = new Error(`Task not found for permalink id=${taskId}`);
+        err.status = 404;
+        throw err;
+    }
+    return tasks[0].id;
 }
-
 
 async function updateWrikeTaskStatus( taskId,newStatusId,axiosCfg = {} ){
     newStatusId = validateStatusId( newStatusId )
