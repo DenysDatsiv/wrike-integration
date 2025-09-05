@@ -6,7 +6,7 @@ const {
     hashObject,
     makeDedupeKey,
     normalizeExtracted,
-    getCustomFieldValueById
+    getCustomFieldValueById, extractWrikeTaskId
 } = require( "../../shared/utils/wrike-webhook/helpers.util" );
 const {MSG} = require( "../../shared/constants/wrike-webhook/answers.constant" );
 const {validateRequired,buildValidationComment} = require( "../../validations/wrike.validation" );
@@ -214,8 +214,6 @@ const handleWrikeWebhook = async ( req,res ) => {
         const buildExtracted = async (tid) => {
             const payload = await safeFetchTask(tid);
             const tk = payload?.data?.[0] || {};
-            console.log(payload)
-            console.log(tk.id)
             const cfs = tk.customFields || [];
 
             const identifierFromCF = getCustomFieldValueById(cfs, contentFields.IDENTIFIER);
@@ -230,7 +228,7 @@ const handleWrikeWebhook = async ( req,res ) => {
             const metaTitleFromCF = getCustomFieldValueById(cfs, contentFields.META_TITLE);
 
             return normalizeExtracted({
-                wrikeTicketId: tk.id,
+                wrikeTicketId: extractWrikeTaskId(tk.permalink),
                 identifier: identifierFromCF,
                 title: titleFromCF,
                 titleUrlSlug: createSlug(titleFromCF),

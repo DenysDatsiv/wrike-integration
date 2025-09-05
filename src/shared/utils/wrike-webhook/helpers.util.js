@@ -69,9 +69,51 @@ const normalizeExtracted = ( x ) => {
         allowOnlyUpdate:x.allowOnlyUpdate
     };
 };
+function extractWrikeTaskId(input) {
+    if (input == null) return null;
+
+    const str = String(input).trim();
+
+    // Якщо вже передали чистий id (тільки цифри) — повертаємо як є
+    if (/^\d+$/.test(str)) return str;
+
+    // Спробувати як URL
+    try {
+        const u = new URL(str);
+
+        // 1) Класичний варіант: ...open.htm?id=123
+        const byQuery = u.searchParams.get('id');
+        if (byQuery && /^\d+$/.test(byQuery)) return byQuery;
+
+        // 2) Варіанти у hash: ...workspace.htm#...&t=123 або ...#...&id=123
+        if (u.hash) {
+            const h = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash;
+            const sp = new URLSearchParams(h);
+            const t = sp.get('t') || sp.get('id');
+            if (t && /^\d+$/.test(t)) return t;
+
+            // Як fallback: пошук id=123 у hash рядку
+            const hm = h.match(/\b(?:id|t)=(\d+)\b/i);
+            if (hm) return hm[1];
+        }
+
+        // 3) Інколи id зустрічається у шляху: /tasks/1742609723
+        const pathMatch = u.pathname.match(/(\d{6,})/);
+        if (pathMatch) return pathMatch[1];
+    } catch {
+        // Не URL — шукаємо шаблони прямо у рядку
+        const m =
+            str.match(/\b(?:id|t)=(\d+)\b/i) || // id=123 або t=123
+            str.match(/(\d{6,})/);             // будь-які 6+ цифр поспіль
+        if (m) return m[1];
+    }
+
+    return null;
+}
 module.exports = {
     logEvent,
     toPlainError,
+    extractWrikeTaskId,
     stripHtml,
     isCommand,
     normalizeForMatch,
