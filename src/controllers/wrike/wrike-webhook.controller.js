@@ -214,6 +214,8 @@ const handleWrikeWebhook = async ( req,res ) => {
         const buildExtracted = async (tid) => {
             const payload = await safeFetchTask(tid);
             const tk = payload?.data?.[0] || {};
+            console.log(payload)
+            console.log(tk)
             const cfs = tk.customFields || [];
 
             const identifierFromCF = getCustomFieldValueById(cfs, contentFields.IDENTIFIER);
