@@ -34,6 +34,7 @@ router.post( '/send-for-review',async ( req,res ) => {
 
 router.post( '/update-status',async ( req,res ) => {
     try{
+        console.log(req.body);
         const {taskId,customStatus} = req.body;
         const id =  await getWrikeTaskId(taskId)
         const data = await updateWrikeTaskStatus(id, customStatus);
