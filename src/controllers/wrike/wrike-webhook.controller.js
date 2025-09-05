@@ -215,7 +215,7 @@ const handleWrikeWebhook = async ( req,res ) => {
             const payload = await safeFetchTask(tid);
             const tk = payload?.data?.[0] || {};
             console.log(payload)
-            console.log(tk)
+            console.log(tk.id)
             const cfs = tk.customFields || [];
 
             const identifierFromCF = getCustomFieldValueById(cfs, contentFields.IDENTIFIER);
@@ -230,7 +230,7 @@ const handleWrikeWebhook = async ( req,res ) => {
             const metaTitleFromCF = getCustomFieldValueById(cfs, contentFields.META_TITLE);
 
             return normalizeExtracted({
-                wrikeTicketId: tid,
+                wrikeTicketId: tk.id,
                 identifier: identifierFromCF,
                 title: titleFromCF,
                 titleUrlSlug: createSlug(titleFromCF),
