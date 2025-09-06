@@ -5,11 +5,15 @@ const path = require('path');
 function launchOpts() {
     const execPath =
         process.env.PUPPETEER_EXECUTABLE_PATH ||
-        (typeof puppeteer.executablePath === 'function' ? puppeteer.executablePath() : undefined);
+        (typeof puppeteer.executablePath === 'function'
+            ? puppeteer.executablePath()
+            : undefined);
+
+    console.log('Using Chrome at:', execPath || '(bundled default)');
 
     return {
         headless: 'new',
-        executablePath: execPath,        // <-- критично на Render
+        executablePath: execPath,      // ← ДОВІРЯЄМО puppeteer.executablePath()
         ignoreHTTPSErrors: true,
         args: [
             '--no-sandbox',
@@ -18,11 +22,10 @@ function launchOpts() {
             '--no-zygote',
             '--no-first-run',
             '--single-process',
-            '--disable-gpu'
-        ]
+            '--disable-gpu',
+        ],
     };
 }
-
 let browser = null;
 
 // Initialize Chromium browser on server startup
