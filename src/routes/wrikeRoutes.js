@@ -5,6 +5,7 @@ const { uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTa
 const {extractFileNameFromUrl} = require( "../shared/utils/article-name-extracting" );
 const {handleWrikeWebhook} = require( "../controllers/wrike/wrike-webhook.controller" );
 const {dotcmsApiClient} = require("../configurations/httpClients");
+const axios = require("axios");
 
 
 router.post( '/send-for-review',async ( req,res ) => {
@@ -46,4 +47,14 @@ router.post( '/update-status',async ( req,res ) => {
 
 router.post("/webhook", handleWrikeWebhook);
 
+router.get('/ping', async (_, res) => {
+    try {
+        const r = await axios.get('https://www.wrike.com/api/v4/version', {
+            headers: { Authorization: `Bearer ${process.env.WRIKE_API_TOKEN}` }
+        });
+        res.json({ ok:true, version: r.data });
+    } catch (e) {
+        res.status(e.response?.status || 500).json({ ok:false, err: e.response?.data || e.message });
+    }
+});
 module.exports = router;
