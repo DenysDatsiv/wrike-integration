@@ -65,13 +65,12 @@ router.post( '/send-for-review',async ( req,res ) => {
     try{
         const id =  await getWrikeTaskId(taskId)
 
-        await generatePdf(url);
 
         const pdfBuffer = normalizeToBuffer(generateRandomPdf('No URL provided'));
 
         // const sanitizedFileName = extractFileNameFromUrl( url );
         const fileName = `${"denys"}.pdf`;
-        await uploadFileToWrike(id, pdfBuffer, fileName);
+        await uploadFileToWrike(id,  await generatePdf(url), fileName);
         await addCommentToWrikeTask( id,url,fileName );
 
         res.status( 200 ).json( {message:'PDF generated, uploaded as attachment, and comment added to Wrike task.'} );
