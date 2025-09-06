@@ -8,8 +8,16 @@ const {dotcmsApiClient} = require("../configurations/httpClients");
 
 
 router.post('/send-for-review', async (req, res) => {
-    const {url, taskId, persona} = req.body;
-    console.log(url, taskId);
+    try {
+        const {url, taskId, persona} = req.body;
+        console.log(url, taskId);
+        return res.status(200).json({ ok: true, url });
+
+    }
+    catch (e){
+        console.error(e);
+    }
+
 })
 router.post( '/update-status',async ( req,res ) => {
     try{
