@@ -8,6 +8,7 @@ const backendRouter = require('./routes/backendRouter');
 const wrikeRoutes = require('./routes/wrikeRoutes');
 
 const { ensureWebhookRegistered } = require('./shared/utils/wrike-webhook/webhooks.util');
+const {initBrowser} = require("./controllers/wrike/pdf.controller");
 // const { startLocalTunnel } = require('./shared/utils/wrike-webhook/localtunnel.util'); // лише локально
 
 const { PORT = 3000 } = process.env;
@@ -55,6 +56,7 @@ app.listen(PORT, async () => {
         (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
     console.log(`Public base: ${publicBaseUrl || '(not set)'}`);
     console.log(`Has WRIKE_TOKEN: ${!!process.env.WRIKE_TOKEN_API}`);
+    await initBrowser();
 
     try {
         if (publicBaseUrl) {
