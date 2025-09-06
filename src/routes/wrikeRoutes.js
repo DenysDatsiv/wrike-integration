@@ -198,7 +198,10 @@ router.post( '/update-status',async ( req,res ) => {
         });
     }
 });
-
+router.get('/puppeteer/path', (req, res) => {
+    const p = typeof executablePath === 'function' ? executablePath() : '(unknown)';
+    res.json({ path: p });
+});
 router.post("/webhook", handleWrikeWebhook);
 
 module.exports = router;

@@ -2,6 +2,26 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
+function launchOpts() {
+    const execPath =
+        process.env.PUPPETEER_EXECUTABLE_PATH ||
+        (typeof puppeteer.executablePath === 'function' ? puppeteer.executablePath() : undefined);
+
+    return {
+        headless: 'new',
+        executablePath: execPath,        // <-- критично на Render
+        ignoreHTTPSErrors: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--no-zygote',
+            '--no-first-run',
+            '--single-process',
+            '--disable-gpu'
+        ]
+    };
+}
 
 let browser = null;
 
@@ -9,19 +29,8 @@ let browser = null;
 async function initBrowser() {
     try {
         console.log('Initializing Chromium browser...');
-        browser = await puppeteer.launch({
-            headless: 'new', // Use new headless mode
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
-            ]
-        });
+         browser = await puppeteer.launch(launchOpts());
+
         console.log('✅ Chromium browser initialized successfully');
     } catch (error) {
         console.error('❌ Failed to initialize Chromium browser:', error.message);
