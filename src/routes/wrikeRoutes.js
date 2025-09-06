@@ -20,7 +20,7 @@ router.post( '/send-for-review',async ( req,res ) => {
         //     },pdfOptions:{printBackground:true},
         // } );
 
-        // const sanitizedFileName = extractFileNameFromUrl( url );
+        const sanitizedFileName = extractFileNameFromUrl( url );
         const fileName = `${sanitizedFileName}.pdf`;
 
         console.log( id,fileName )
