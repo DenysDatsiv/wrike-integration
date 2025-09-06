@@ -11,16 +11,15 @@ const axios = require("axios");
 router.post( '/send-for-review',async ( req,res ) => {
     const { url,taskId,persona } = req.body;
     try{
-        const id =  "MAAAAABn3jRp"
+        const id =  await getWrikeTaskId(taskId)
 
-        await generatePdf(url);
+        const pdfBuffer = await generatePdf(url);
 
 
         // const sanitizedFileName = extractFileNameFromUrl( url );
-        // const fileName = `${"denys"}.pdf`;
-// console.log( id,pdfBuffer,fileName )
+        const fileName = `${"denys"}.pdf`;
         // await uploadFileToWrike( id,pdfBuffer,fileName );
-        // await addCommentToWrikeTask( id,"DSADasdasd","DASDASD" );
+        // await addCommentToWrikeTask( id,url,fileName );
 
         res.status( 200 ).json( {message:'PDF generated, uploaded as attachment, and comment added to Wrike task.'} );
     }catch ( error ){
