@@ -35,7 +35,7 @@ app.get('/wrike/ping', async (_req, res) => {
     const axios = require('axios');
     try {
         const r = await axios.get('https://www.wrike.com/api/v4/version', {
-            headers: { Authorization: `Bearer ${process.env.WRIKE_TOKEN || ''}` },
+            headers: { Authorization: `Bearer ${process.env.WRIKE_TOKEN_API || ''}` },
             timeout: 8000,
         });
         res.json({ ok: true, version: r.data });
@@ -54,7 +54,7 @@ app.listen(PORT, async () => {
     const publicBaseUrl =
         (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
     console.log(`Public base: ${publicBaseUrl || '(not set)'}`);
-    console.log(`Has WRIKE_TOKEN: ${!!process.env.WRIKE_TOKEN}`);
+    console.log(`Has WRIKE_TOKEN: ${!!process.env.WRIKE_TOKEN_API}`);
 
     try {
         if (publicBaseUrl) {
