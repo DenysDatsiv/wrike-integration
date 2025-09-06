@@ -43,7 +43,7 @@ router.post('/send-for-review', async (req, res) => {
 
         // Step 1: Get Wrike task ID
         console.log('📋 Getting Wrike task ID...');
-        wrikeTaskId = await getWrikeTaskId(taskId);
+        // wrikeTaskId = await getWrikeTaskId(taskId);
         console.log(`✅ Wrike task ID retrieved: ${wrikeTaskId}`);
 
         // Step 2: Generate PDF (only once!)
@@ -57,15 +57,15 @@ router.post('/send-for-review', async (req, res) => {
             printBackground: true
         };
 
-        pdfBuffer = await generatePdf(url, pdfOptions);
-        console.log(`✅ PDF generated successfully (${pdfBuffer.length} bytes)`);
+        // pdfBuffer = await generatePdf(url, pdfOptions);
+        // console.log(`✅ PDF generated successfully (${pdfBuffer.length} bytes)`);
 
         // Step 3: Generate filename
-        const timestamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-        const personaPrefix = persona ? `${persona.toLowerCase().replace(/\s+/g, '-')}-` : '';
-        const domain = new URL(url).hostname.replace('www.', '');
-        fileName = `${personaPrefix}review-${domain}-${timestamp}.pdf`;
-        console.log(`📁 Generated filename: ${fileName}`);
+        // const timestamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+        // const personaPrefix = persona ? `${persona.toLowerCase().replace(/\s+/g, '-')}-` : '';
+        // const domain = new URL(url).hostname.replace('www.', '');
+        // fileName = `${personaPrefix}review-${domain}-${timestamp}.pdf`;
+        // console.log(`📁 Generated filename: ${fileName}`);
         //
         // // Step 4: Upload file to Wrike
         // console.log('📤 Uploading PDF to Wrike...');
