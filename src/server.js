@@ -1,7 +1,8 @@
 
 const express = require( 'express' );
 const cors = require( 'cors' );
-
+const dotenv = require( 'dotenv' );
+dotenv.config();
 const dotcmsRouter = require( './routes/dotcmsRouter' );
 const backendRouter = require( './routes/backendRouter' );
 const config = require( '../config' );
@@ -27,6 +28,7 @@ app.use( express.json( {strict:false} ) );
 app.use( '/dotcms',dotcmsRouter );
 app.use( '/back-end',backendRouter );
 app.use( '/wrike',wrikeRoutes );
+
 
 app.listen(PORT, async () => {
     console.log(`✅ Server on http://localhost:${PORT}`);

@@ -4,6 +4,7 @@ const streamifier = require( 'streamifier' );
 const FormData = require( 'form-data' );
 const {validateTaskId,validateStatusId} = require( "../../validations/wrike.validation" );
 const {wrikeApiClient} = require( "../../configurations/httpClients" );
+const {WRIKE_API_URL, WRIKE_API_TOKEN} = require("../../configurations/env.variables");
 
 
 wrikeApiClient.interceptors.request.use( ( config ) => {
@@ -17,26 +18,54 @@ wrikeApiClient.interceptors.response.use( ( response ) => {
 },( error ) => {
     return Promise.reject( error );
 } );
+async function uploadFileToWrike(taskId, pdfBuffer, fileName) {
+    try {
+        console.log("➡️ uploadFileToWrike called with:", { taskId, fileName });
 
-async function uploadFileToWrike( taskId,pdfBuffer,fileName ){
-    taskId = validateTaskId( taskId );
+        if (!taskId) throw new Error("taskId is required");
+        if (!Buffer.isBuffer(pdfBuffer) && !(pdfBuffer instanceof Uint8Array)) {
+            throw new Error("pdfBuffer must be Buffer or Uint8Array");
+        }
+        if (!fileName) throw new Error("fileName is required");
 
-    try{
-        const formData = new FormData();
+        console.log("✅ Input validation passed");
 
-        const fileStream = streamifier.createReadStream( pdfBuffer );
+        // якщо це Uint8Array — перетворюємо в Buffer
+        const buf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
+        console.log("📦 Buffer prepared, size:", buf.length);
 
-        formData.append( 'file',fileStream,{filename:fileName,contentType:'application/pdf'} );
+        const form = new FormData();
+        form.append("file", buf, {
+            filename: fileName,
+            contentType: "application/pdf",
+        });
+        console.log("📑 FormData created with headers:", form.getHeaders());
 
-        const response = await axios.post( `${WRIKE_API_URL}tasks/${taskId}/attachments`,formData,{
-            headers:{
-                'Authorization':`Bearer ${WRIKE_API_TOKEN}`,...formData.getHeaders(),
-            },
-        } );
 
-        return response.data.data[0];
-    }catch ( error ){
-        throw new Error( 'Failed to upload file to Wrike' );
+        console.log("🔧 Axios client initialized");
+
+        console.log("📤 Sending request to Wrike...");
+        const { data } = await wrikeApiClient.post(
+            `/tasks/${encodeURIComponent(taskId)}/attachments`,
+            form
+        );
+
+        console.log("📥 Response received:", JSON.stringify(data, null, 2));
+
+        const [attachment] = data?.data || [];
+        if (!attachment) {
+            console.log("⚠️ No attachment in Wrike response");
+            throw new Error("Unexpected Wrike response: no attachment returned");
+        }
+
+        console.log("✅ Attachment uploaded:", { id: attachment.id, name: attachment.name });
+        return attachment;
+    } catch (err) {
+        console.error("❌ uploadFileToWrike failed:", err.message);
+        if (err.response) {
+            console.error("📡 Wrike API error:", err.response.status, err.response.data);
+        }
+        throw err;
     }
 }
 

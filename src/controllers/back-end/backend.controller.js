@@ -12,7 +12,7 @@ async function handleFdsQuery(req, res) {
 
         res.status(500).json({
             error: 'Internal Server Error',
-            details: 'An unexpected error occurred while processing the request'
+            details: 'An unexpected curred while processing the request'
         });
     }
 }
