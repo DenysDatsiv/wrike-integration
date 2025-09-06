@@ -20,8 +20,7 @@ router.post( '/send-for-review',async ( req,res ) => {
         //     },pdfOptions:{printBackground:true},
         // } );
 
-        const sanitizedFileName = extractFileNameFromUrl( url );
-        const fileName = `${sanitizedFileName}.pdf`;
+        const fileName = `фівапролд.pdf`;
 
         console.log( id,fileName )
         await addCommentToWrikeTask( id,url,fileName );
