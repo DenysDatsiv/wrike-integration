@@ -7,18 +7,31 @@ const {handleWrikeWebhook} = require( "../controllers/wrike/wrike-webhook.contro
 const {dotcmsApiClient} = require("../configurations/httpClients");
 
 
-router.post('/send-for-review', async (req, res) => {
-    try {
-        const {url, taskId, persona} = req.body;
-        console.log(url, taskId);
-        return res.status(200).json({ ok: true, url });
+router.post( '/send-for-review',async ( req,res ) => {
+    const { url,taskId,persona } = req.body;
+    try{
+        const id =  await getWrikeTaskId(taskId)
+        //
+        // const pdfBuffer = await generatePdf( url,{
+        //     modal:{
+        //         persona,
+        //         acceptText:'Accept to continue',
+        //         debug:false,
+        //     },pdfOptions:{printBackground:true},
+        // } );
 
-    }
-    catch (e){
-        console.error(e);
-    }
+        // const sanitizedFileName = extractFileNameFromUrl( url );
+        const fileName = `${sanitizedFileName}.pdf`;
 
-})
+        console.log( id,fileName )
+        await addCommentToWrikeTask( id,url,fileName );
+
+        res.status( 200 ).json( {message:'PDF generated, uploaded as attachment, and comment added to Wrike task.'} );
+    }catch ( error ){
+        res.status( 500 ).send( 'An error occurred while generating the PDF or sending it to Wrike.' );
+    }
+} );
+
 router.post( '/update-status',async ( req,res ) => {
     try{
         console.log(req.body);
@@ -35,10 +48,7 @@ router.post( '/update-status',async ( req,res ) => {
         });
     }
 });
-router.get('/puppeteer/path', (req, res) => {
-    const p = typeof executablePath === 'function' ? executablePath() : '(unknown)';
-    res.json({ path: p });
-});
+
 router.post("/webhook", handleWrikeWebhook);
 
 module.exports = router;
