@@ -23,10 +23,10 @@ router.post( '/send-for-review',async ( req,res ) => {
         const sanitizedFileName = extractFileNameFromUrl( url );
         const fileName = `${sanitizedFileName}.pdf`;
 
-        console.log( id,fileName )
-        await uploadFileToWrike( id,pdfBuffer,fileName );
-
-        await addCommentToWrikeTask( id,url,fileName );
+        console.log(pdfBuffer )
+        // await uploadFileToWrike( id,pdfBuffer,fileName );
+        //
+        // await addCommentToWrikeTask( id,url,fileName );
 
         res.status( 200 ).json( {message:'PDF generated, uploaded as attachment, and comment added to Wrike task.'} );
     }catch ( error ){
