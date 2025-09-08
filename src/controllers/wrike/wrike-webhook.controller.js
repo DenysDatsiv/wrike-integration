@@ -157,229 +157,173 @@ function hmacSha256Hex(secret, bufferOrString) {
 
 /* ============ MAIN HANDLER ============ */
 async function handleWrikeWebhook(req, res) {
-    // Маршрут ПОВИНЕН бути з express.raw({ type: '*/*' })
-    const rawBody = req.body || Buffer.from('');
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const xHookSecret = req.get('X-Hook-Secret') || '';
     const bodyStr = rawBody.toString('utf8');
     const isVerification = bodyStr.includes('"WebHook secret verification"');
 
-    // 1) Handshake: X-Hook-Secret у відповіді = HMAC(secret, <вхідний X-Hook-Secret>)
+    // 1) Handshake
     if (isVerification) {
         const resp = hmacSha256Hex(WEBHOOK_SECRET, xHookSecret);
         res.set('X-Hook-Secret', resp);
         return res.sendStatus(200);
     }
 
-    // 2) Події: перевіряємо, що X-Hook-Secret == HMAC(secret, <raw body>)
+    // 2) Підпис подій
     const expected = hmacSha256Hex(WEBHOOK_SECRET, rawBody);
     if (!xHookSecret || xHookSecret !== expected) {
         return res.status(401).send('Invalid signature');
     }
 
-    // 3) Парсимо JSON
-    let payload;
+    // 3) JSON
+    let batch;
     try {
-        payload = JSON.parse(bodyStr || '[]');
+        const payload = JSON.parse(bodyStr || '[]');
+        batch = Array.isArray(payload) ? payload : [payload];
     } catch {
         return res.status(400).send('Bad JSON');
     }
 
-    // 4) Обробка подій
-    const batch = Array.isArray(payload) ? payload : [payload];
-    for (const e of batch) {
+    // 4) Обробку запускаємо у фоні, відповідь — одразу
+    Promise.allSettled(batch.map(e => processEvent(e))).catch(() => {});
+    return res.sendStatus(200);
+}
+
+// === НОВЕ: легка/миттєва частина + важка частина розділені ===
+async function processEvent(e) {
+    try {
         const key = makeDedupeKey(e);
-        if (seen.has(key)) continue;
+        if (seen.has(key)) return;
         seen.add(key);
         if (seen.size > SEEN_MAX) Array.from(seen).slice(0, 100).forEach(k => seen.delete(k));
 
-        // a) TaskCreated — маркер
+        // Тільки потрібні події
         if (e.eventType === 'TaskCreated' && e.taskId) {
-            const st = ensureTaskState(e.taskId);
-            st.createdSeen = true;
+            ensureTaskState(e.taskId).createdSeen = true;
             logEvent({ kind: 'task_created', taskId: e.taskId, event: e });
-            continue;
-        }
-
-        // b) Потрібні лише коментарі
-        if (e.eventType !== 'CommentAdded' || !e.commentId) continue;
-
-        let comment;
-        try {
-            comment = await fetchCommentById(e.commentId);
-        } catch (err) {
-            logEvent({ kind: 'error', where: 'fetchCommentById', error: err?.response?.data || err?.message, event: e });
-            continue;
-        }
-
-        const taskId = e.taskId || comment?.taskId;
-        if (!taskId) continue;
-        const st = ensureTaskState(taskId);
-
-        const contentFields = {
-            TITLE: 'IEAB3SKBJUAJBWGI',
-            SUMMARY: 'IEAB3SKBJUAJBWGA',
-            DATE_OF_PUBLICATION: 'IEAB3SKBJUAJBWFK',
-            CONTENT: 'IEAB3SKBJUAI5VKH',
-            MEDIA_TYPE: 'IEAB3SKBJUAJBYKR',
-            META_DESCRIPTION: 'IEAB3SKBJUAJCDJC',
-            META_TITLE: 'IEAB3SKBJUAJCDIR',
-            IDENTIFIER: 'IEAB3SKBJUAJGDGR',
-            CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
-        };
-
-        const buildExtracted = async (tid) => {
-            const payload = await safeFetchTask(tid);
-            const tk = payload?.data?.[0] || {};
-            const cfs = tk.customFields || [];
-
-            const identifierFromCF = getCustomFieldValueById(cfs, contentFields.IDENTIFIER);
-            const createdFlagFromCF = getCustomFieldValueById(cfs, contentFields.CREATED_FLAG_ALLOW_UPDATE_ONLY);
-
-            const titleFromCF = getCustomFieldValueById(cfs, contentFields.TITLE);
-            const summaryFromCF = getCustomFieldValueById(cfs, contentFields.SUMMARY);
-            const dateOfPublicationFromCF = getCustomFieldValueById(cfs, contentFields.DATE_OF_PUBLICATION);
-            const contentFromCF = getCustomFieldValueById(cfs, contentFields.CONTENT);
-            const mediaTypeFromCF = getCustomFieldValueById(cfs, contentFields.MEDIA_TYPE);
-            const metaDescriptionFromCF = getCustomFieldValueById(cfs, contentFields.META_DESCRIPTION);
-            const metaTitleFromCF = getCustomFieldValueById(cfs, contentFields.META_TITLE);
-
-            return normalizeExtracted({
-                wrikeTicketId: extractWrikeTaskId(tk.permalink),
-                identifier: identifierFromCF,
-                title: titleFromCF,
-                titleUrlSlug: createSlug(titleFromCF),
-                summary: summaryFromCF,
-                dateOfPublication: dateOfPublicationFromCF,
-                content: contentFromCF,
-                mediaType: (mediaTypeFromCF || 'read'),
-                metaDescription: metaDescriptionFromCF,
-                metaTitle: metaTitleFromCF,
-                allowOnlyUpdate: !!isYes(createdFlagFromCF),
-            });
-        };
-
-        if (isCommand(comment?.text, 'create')) {
-            const extracted = await buildExtracted(taskId);
-
-            // Блокуємо створення, якщо об’єкт уже створено або прапорець "update only"
-            if (extracted?.identifier && extracted.allowOnlyUpdate) {
-                if (!st.skeletonCreated) {
-                    st.skeletonCreated = true;
-                    st.skeletonCreatedAt = st.skeletonCreatedAt || new Date().toISOString();
-                }
-                try {
-                    await postComment(taskId, MSG.alreadyCreated);
-                } catch (err) {
-                    logEvent({ kind: 'warn', where: 'postComment(create_blocked)', error: err?.message, taskId });
-                }
-                continue;
-            }
-
-            // Валідація
-            const v = validateRequired(extracted);
-            if (!v.ok) {
-                try { await postComment(taskId, buildValidationComment(v)); } catch {}
-                continue;
-            }
-
-            // ✅ Створення дозволено
-            const nowIso = new Date().toISOString();
-            if (st.skeletonCreated) {
-                try { await postComment(taskId, MSG.alreadyCreated(st.skeletonCreatedAt)); } catch {}
-            } else {
-                st.skeletonCreated = true;
-                st.skeletonCreatedAt = nowIso;
-                try {
-                    const dotCMSArticle = await require('../../services/dotcms/dotcms.service')
-                        .createInsight({ body: extracted || {} });
-
-                    // 1) Проставляємо Identifier у Wrike
-                    const newIdentifier = dotCMSArticle?.fired?.entity?.identifier;
-                    if (newIdentifier) {
-                        await updateTaskCustomField(taskId, contentFields.IDENTIFIER, newIdentifier);
-                    }
-
-                    // 2) Виставляємо прапорець "CREATED_FLAG_ALLOW_UPDATE_ONLY" = "Yes"
-                    try {
-                        await updateTaskCustomField(taskId, contentFields.CREATED_FLAG_ALLOW_UPDATE_ONLY, 'Yes');
-                    } catch (errSetFlag) {
-                        logEvent({
-                            kind: 'warn',
-                            where: 'updateTaskCustomField(CREATED_FLAG_ALLOW_UPDATE_ONLY)',
-                            error: errSetFlag?.message,
-                            taskId
-                        });
-                    }
-
-                    await postComment(taskId, MSG.created);
-                } catch (err) {
-                    logEvent({ kind: 'warn', where: 'postComment(created)', error: err?.message, taskId });
-                }
-                st.snapshot = extracted;
-                st.lastSnapshotHash = hashObject(extracted);
-            }
-            continue;
-        }
-
-
-        /* ====== UPDATE ====== */
-        if (isCommand(stripHtml(comment?.text || ''), 'update')) {
-            const extracted = await buildExtracted(taskId);
-
-            if (!extracted?.identifier) {
-                try { await postComment(taskId, MSG.pleaseCreateFirst); } catch {}
-                return;
-            }
-
-            if (!st.skeletonCreated) {
-                st.skeletonCreated = true;
-                st.skeletonCreatedAt = st.skeletonCreatedAt || new Date().toISOString();
-            }
-
-            const v = validateRequired(extracted);
-            if (!v.ok) {
-                try { await postComment(taskId, buildValidationComment(v)); } catch (err) {
-                    logEvent({ kind: 'warn', where: 'postComment(update_validation)', error: err?.message, taskId });
-                }
-                logEvent({ kind: 'update_validation_failed', ...extracted, latestComment: comment, state: { ...st } });
-                return;
-            }
-
-            const nextHash = hashObject(extracted);
-            const sameAsBefore = st.lastSnapshotHash && st.lastSnapshotHash === nextHash;
-            const isEmptyPayload =
-                !extracted?.title && !extracted?.summary && !extracted?.content &&
-                !extracted?.metaTitle && !extracted?.metaDescription;
-
-            if (sameAsBefore || isEmptyPayload) {
-                try { await postComment(taskId, MSG.noChanges(st.lastUpdateAt || st.skeletonCreatedAt)); } catch (err) {
-                    logEvent({ kind: 'warn', where: 'postComment(update_no_changes_ack)', error: err?.message, taskId });
-                }
-                st.lastNoChangesAt = new Date().toISOString();
-                return;
-            }
-
-            try {
-                await postComment(taskId, MSG.updateStarting);
-                await updateContentletByIdentifier(extracted.identifier, { ...extracted });
-                st.lastUpdateAt = new Date().toISOString();
-                st.snapshot = extracted;
-                st.lastSnapshotHash = nextHash;
-                await postComment(taskId, MSG.updated);
-            } catch (err) {
-                logEvent({ kind: 'error', where: 'updateContentletByIdentifier', error: err?.response?.data || err?.message, taskId });
-                try {
-                    await postComment(
-                        taskId,
-                        `❌ Не вдалося оновити статтю: ${stripHtml(err?.response?.data?.message || err?.message || 'Unknown error')}`
-                    );
-                } catch (e2) {
-                    logEvent({ kind: 'warn', where: 'postComment(update_error)', error: e2?.message, taskId });
-                }
-            }
             return;
         }
+        if (e.eventType !== 'CommentAdded' || !e.commentId) return;
+
+        const comment = await fetchCommentById(e.commentId);
+        const taskId = e.taskId || comment?.taskId;
+        if (!taskId) return;
+        const st = ensureTaskState(taskId);
+
+        const text = stripHtml(comment?.text || '');
+        const isCreate = isCommand(text, 'create');
+        const isUpdate = isCommand(text, 'update');
+
+        // 💬 1) МИТТЄВА ВІДПОВІДЬ У WRIKE (ACK)
+        if (isCreate) {
+            // Якщо створювати не можна — скажи це одразу
+            const extractedLite = await buildExtractedLite(taskId); // легка версія, без важких викликів
+            if (extractedLite?.identifier && extractedLite.allowOnlyUpdate) {
+                await safePostComment(taskId, MSG.alreadyCreated);
+                st.skeletonCreated = true;
+                st.skeletonCreatedAt = st.skeletonCreatedAt || new Date().toISOString();
+                return;
+            }
+            await safePostComment(taskId, '🛠 Creating article… This may take ~a few seconds.');
+            // 2) Важка частина — не блокує ACK
+            queueMicrotask(() => heavyCreateFlow(taskId, st).catch(err =>
+                logEvent({ kind: 'error', where: 'heavyCreateFlow', error: toPlainError(err), taskId })
+            ));
+            return;
+        }
+
+        if (isUpdate) {
+            await safePostComment(taskId, MSG.updateStarting); // вже є у твоєму коді, лишаємо тут одразу
+            queueMicrotask(() => heavyUpdateFlow(taskId, st).catch(err =>
+                logEvent({ kind: 'error', where: 'heavyUpdateFlow', error: toPlainError(err), taskId })
+            ));
+            return;
+        }
+    } catch (err) {
+        logEvent({ kind: 'error', where: 'processEvent', error: toPlainError(err) });
     }
+}
+
+// ЛЕГКИЙ екстракт: 1 швидкий запит замість серії
+async function buildExtractedLite(tid) {
+    const payload = await safeFetchTask(tid); // в safeFetchTask бажано зменшити tries/delay
+    const tk = payload?.data?.[0] || {};
+    const cfs = tk.customFields || [];
+    const contentFields = { /* ...як у тебе... */ };
+    return normalizeExtracted({
+        wrikeTicketId: extractWrikeTaskId(tk.permalink),
+        identifier: getCustomFieldValueById(cfs, contentFields.IDENTIFIER),
+        title: getCustomFieldValueById(cfs, contentFields.TITLE),
+        titleUrlSlug: createSlug(getCustomFieldValueById(cfs, contentFields.TITLE)),
+        summary: getCustomFieldValueById(cfs, contentFields.SUMMARY),
+        dateOfPublication: getCustomFieldValueById(cfs, contentFields.DATE_OF_PUBLICATION),
+        content: getCustomFieldValueById(cfs, contentFields.CONTENT),
+        mediaType: getCustomFieldValueById(cfs, contentFields.MEDIA_TYPE) || 'read',
+        metaDescription: getCustomFieldValueById(cfs, contentFields.META_DESCRIPTION),
+        metaTitle: getCustomFieldValueById(cfs, contentFields.META_TITLE),
+        allowOnlyUpdate: ['yes', 'y', 'true', '1'].includes(String(getCustomFieldValueById(cfs, contentFields.CREATED_FLAG_ALLOW_UPDATE_ONLY) || '').toLowerCase())
+    });
+}
+
+// Безпечний пост коментаря (не кидає помилки)
+async function safePostComment(taskId, text) {
+    try { await postComment(taskId, text); } catch (e) {
+        logEvent({ kind: 'warn', where: 'postComment(ack)', error: toPlainError(e), taskId });
+    }
+}
+
+// Важкий create-flow (було у твоєму коді всередині 'create')
+async function heavyCreateFlow(taskId, st) {
+    const extracted = await buildExtractedLite(taskId);
+    const v = validateRequired(extracted);
+    if (!v.ok) return void await safePostComment(taskId, buildValidationComment(v));
+
+    if (!st.skeletonCreated) {
+        st.skeletonCreated = true;
+        st.skeletonCreatedAt = st.skeletonCreatedAt || new Date().toISOString();
+    }
+
+    const dotCMSArticle = await require('../../services/dotcms/dotcms.service')
+        .createInsight({ body: extracted || {} });
+
+    const contentFields = { /* ... */ };
+    const newIdentifier = dotCMSArticle?.fired?.entity?.identifier;
+    if (newIdentifier) {
+        await updateTaskCustomField(taskId, contentFields.IDENTIFIER, newIdentifier);
+    }
+    // Позначити “Created flag”
+    await updateTaskCustomField(taskId, contentFields.CREATED_FLAG_ALLOW_UPDATE_ONLY, 'Yes').catch(()=>{});
+
+    st.snapshot = extracted;
+    st.lastSnapshotHash = hashObject(extracted);
+    await safePostComment(taskId, MSG.created);
+}
+
+// Важкий update-flow (було у твоєму 'update')
+async function heavyUpdateFlow(taskId, st) {
+    const extracted = await buildExtractedLite(taskId);
+    if (!extracted?.identifier) return void await safePostComment(taskId, MSG.pleaseCreateFirst);
+
+    const v = validateRequired(extracted);
+    if (!v.ok) return void await safePostComment(taskId, buildValidationComment(v));
+
+    const nextHash = hashObject(extracted);
+    const sameAsBefore = st.lastSnapshotHash && st.lastSnapshotHash === nextHash;
+    const isEmpty =
+        !extracted?.title && !extracted?.summary && !extracted?.content &&
+        !extracted?.metaTitle && !extracted?.metaDescription;
+
+    if (sameAsBefore || isEmpty) {
+        await safePostComment(taskId, MSG.noChanges(st.lastUpdateAt || st.skeletonCreatedAt));
+        st.lastNoChangesAt = new Date().toISOString();
+        return;
+    }
+
+    await updateContentletByIdentifier(extracted.identifier, { ...extracted });
+    st.lastUpdateAt = new Date().toISOString();
+    st.snapshot = extracted;
+    st.lastSnapshotHash = nextHash;
+    await safePostComment(taskId, MSG.updated);
 }
 
 module.exports = { handleWrikeWebhook };

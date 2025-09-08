@@ -42,10 +42,15 @@ const app = express();
 app.use(cors());
 app.set('trust proxy', true);
 
-app.post('/wrike/webhook', express.raw({ type: '*/*', limit: '5mb' }), handleWrikeWebhook);
+// ПІСЛЯ:
+app.post(
+    '/wrike/webhook',
+    express.raw({ type: '*/*', limit: '5mb' }), // ⬅️ важливо: raw тільки тут
+    handleWrikeWebhook
+);
 
+// Далі глобальні парсери як було:
 app.use((req, res, next) => {
-    if (req.path === '/wrike/webhook') return next(); // пропустити raw-маршрут
     return express.json({ limit: '50mb', strict: false })(req, res, next);
 });
 
@@ -55,7 +60,7 @@ app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
 /** === Роути === */
 app.use('/dotcms', dotcmsRouter);
 app.use('/back-end', backendRouter);
-app.use('/wrike', wrikeRoutes);
+// app.use('/wrike', wrikeRoutes);
 
 /** === 404 для інших === */
 app.use((req, res) => {
