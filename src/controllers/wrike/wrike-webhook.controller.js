@@ -1,4 +1,4 @@
-// controllers/wrike/webhook.controller.js
+// src/controllers/wrike/webhook.controller.js
 const crypto = require('crypto');
 const {
     logEvent,
@@ -18,7 +18,7 @@ const { wrikeApiClient, dotcmsApiClient } = require('../../configurations/httpCl
 const { createSlug, sleep } = require('../../shared/utils/wrike-webhook/common.util');
 const { wrike, WEBHOOK_SECRET } = require('../../configurations/env.variables');
 
-/* ============================ In-memory state ============================ */
+/* ============ In-memory state ============ */
 const taskState = new Map();
 const seen = new Set();
 const SEEN_MAX = 500;
@@ -150,43 +150,41 @@ async function updateTaskCustomField(taskId, customFieldId, value) {
     }
 }
 
-/* ============================ HMAC ============================ */
+/* ============ HMAC helper ============ */
 function hmacSha256Hex(secret, bufferOrString) {
     return crypto.createHmac('sha256', secret).update(bufferOrString).digest('hex');
 }
 
-/* ============================ MAIN HANDLER ============================ */
+/* ============ MAIN HANDLER ============ */
 async function handleWrikeWebhook(req, res) {
-    const xHookSecret = req.get('X-Hook-Secret');
-    const xHookSignature = req.get('X-Hook-Signature');
+    // Маршрут ПОВИНЕН бути з express.raw({ type: '*/*' })
+    const rawBody = req.body || Buffer.from('');
+    const xHookSecret = req.get('X-Hook-Secret') || '';
+    const bodyStr = rawBody.toString('utf8');
+    const isVerification = bodyStr.includes('"WebHook secret verification"');
 
-    // 1) Handshake: Wrike очікує ТОЙ САМИЙ X-Hook-Secret у відповіді
-    if (xHookSecret && !xHookSignature) {
-        res.set('X-Hook-Secret', xHookSecret);
+    // 1) Handshake: X-Hook-Secret у відповіді = HMAC(secret, <вхідний X-Hook-Secret>)
+    if (isVerification) {
+        const resp = hmacSha256Hex(WEBHOOK_SECRET, xHookSecret);
+        res.set('X-Hook-Secret', resp);
         return res.sendStatus(200);
     }
 
-    // 2) Події: має бути X-Hook-Signature і він має збігатися з HMAC(WEBHOOK_SECRET, rawBody)
-    if (!xHookSignature) {
-        return res.status(400).send('Missing X-Hook-Signature');
-    }
-    const rawBody = req.body; // Buffer, бо маршрут повинен бути з express.raw
-    const expected = hmacSha256Hex(WEBHOOK_SECRET, rawBody || Buffer.from(''));
-    if (xHookSignature !== expected) {
-        return res.status(401).send('Bad signature');
+    // 2) Події: перевіряємо, що X-Hook-Secret == HMAC(secret, <raw body>)
+    const expected = hmacSha256Hex(WEBHOOK_SECRET, rawBody);
+    if (!xHookSecret || xHookSecret !== expected) {
+        return res.status(401).send('Invalid signature');
     }
 
-    // 3) Парсимо JSON після валідації підпису
+    // 3) Парсимо JSON
     let payload;
     try {
-        payload = JSON.parse((rawBody || Buffer.from('')).toString('utf8') || '[]');
+        payload = JSON.parse(bodyStr || '[]');
     } catch {
         return res.status(400).send('Bad JSON');
     }
 
-    // 4) Відповідаємо одразу, обробляємо у фоні (але без бекграунд-джоб — тут синхронно після відповіді)
-    res.sendStatus(202);
-
+    // 4) Обробка подій
     const batch = Array.isArray(payload) ? payload : [payload];
     for (const e of batch) {
         const key = makeDedupeKey(e);
@@ -194,7 +192,7 @@ async function handleWrikeWebhook(req, res) {
         seen.add(key);
         if (seen.size > SEEN_MAX) Array.from(seen).slice(0, 100).forEach(k => seen.delete(k));
 
-        // a) Позначаємо створення таски
+        // a) TaskCreated — маркер
         if (e.eventType === 'TaskCreated' && e.taskId) {
             const st = ensureTaskState(e.taskId);
             st.createdSeen = true;
@@ -202,7 +200,7 @@ async function handleWrikeWebhook(req, res) {
             continue;
         }
 
-        // b) Цікавлять тільки коментарі
+        // b) Потрібні лише коментарі
         if (e.eventType !== 'CommentAdded' || !e.commentId) continue;
 
         let comment;
@@ -215,7 +213,6 @@ async function handleWrikeWebhook(req, res) {
 
         const taskId = e.taskId || comment?.taskId;
         if (!taskId) continue;
-
         const st = ensureTaskState(taskId);
 
         const contentFields = {
@@ -261,7 +258,6 @@ async function handleWrikeWebhook(req, res) {
             });
         };
 
-        /* ============================ CREATE ============================ */
         if (isCommand(comment?.text, 'create')) {
             const extracted = await buildExtracted(taskId);
 
@@ -325,27 +321,21 @@ async function handleWrikeWebhook(req, res) {
             continue;
         }
 
-        /* ============================ UPDATE ============================ */
-        if (isCommand(comment?.text, 'update')) {
+
+        /* ====== UPDATE ====== */
+        if (isCommand(stripHtml(comment?.text || ''), 'update')) {
             const extracted = await buildExtracted(taskId);
 
-            // Якщо немає identifier — блокуємо оновлення
             if (!extracted?.identifier) {
-                try {
-                    await postComment(taskId, MSG.pleaseCreateFirst);
-                } catch (err) {
-                    logEvent({ kind: 'warn', where: 'postComment(no_identifier)', error: err?.message, taskId });
-                }
+                try { await postComment(taskId, MSG.pleaseCreateFirst); } catch {}
                 return;
             }
 
-            // Дозволяємо оновлення навіть якщо локально не було skeletonCreated
             if (!st.skeletonCreated) {
                 st.skeletonCreated = true;
                 st.skeletonCreatedAt = st.skeletonCreatedAt || new Date().toISOString();
             }
 
-            // Валідація
             const v = validateRequired(extracted);
             if (!v.ok) {
                 try { await postComment(taskId, buildValidationComment(v)); } catch (err) {
@@ -355,7 +345,6 @@ async function handleWrikeWebhook(req, res) {
                 return;
             }
 
-            // Перевірка на відсутність змін / порожній payload
             const nextHash = hashObject(extracted);
             const sameAsBefore = st.lastSnapshotHash && st.lastSnapshotHash === nextHash;
             const isEmptyPayload =
@@ -370,7 +359,6 @@ async function handleWrikeWebhook(req, res) {
                 return;
             }
 
-            // Оновлення контентлету
             try {
                 await postComment(taskId, MSG.updateStarting);
                 await updateContentletByIdentifier(extracted.identifier, { ...extracted });
@@ -389,6 +377,7 @@ async function handleWrikeWebhook(req, res) {
                     logEvent({ kind: 'warn', where: 'postComment(update_error)', error: e2?.message, taskId });
                 }
             }
+            return;
         }
     }
 }

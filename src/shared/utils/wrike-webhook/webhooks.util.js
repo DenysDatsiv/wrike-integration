@@ -19,7 +19,7 @@ async function ensureWebhookRegistered(baseUrlOverride) {
     if (!WEBHOOK_SECRET) throw new Error("WEBHOOK_SECRET не задано");
 
     const hookUrl = `${base}/wrike/webhook`;
-
+console.log(hookUrl)
     console.log("🔄 Registering webhook at:", hookUrl);
 
     // Remove existing webhook
@@ -51,16 +51,23 @@ async function ensureWebhookRegistered(baseUrlOverride) {
     console.log("📤 Creating webhook with events:", EVENTS_STRING);
 
     try {
-        const {data} = await wrikeApiClient.post("/webhooks", body.toString(), {
+        const res = await wrikeApiClient.post("webhooks", body.toString(), {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Accept": "application/json"
             },
-            timeout: 30000 // 30 second timeout
+            timeout: 30000
         });
 
-        const created = data?.data?.[0];
-        if (!created?.id) throw new Error("Створення вебхука відбулося без ID у відповіді");
+        // 🔧 Було: const created = data?.data?.[0]
+        // ✅ Має бути: res.data.data[0]
+        const created = res?.data?.data?.[0];
+
+        // Діагностика на випадок нетипової відповіді
+        if (!created) {
+            console.error("Unexpected response:", res?.data);
+            throw new Error("Unexpected response format from Wrike (no data[0])");
+        }
 
         console.log("✅ Вебхук створено успішно:");
         console.log("   ID:", created.id);
@@ -68,7 +75,7 @@ async function ensureWebhookRegistered(baseUrlOverride) {
         console.log("   Events:", created.events);
 
         return created;
-    } catch (e) {
+    }catch (e) {
         const errText = toPlainError(e);
         console.error("❌ Створення вебхука не вдалося:");
         console.error("   Error:", errText);
