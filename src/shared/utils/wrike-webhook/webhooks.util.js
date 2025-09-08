@@ -3,6 +3,7 @@
 
 const { wrike, WEBHOOK_SECRET, PUBLIC_BASE_URL } = require("../../../configurations/env.variables");
 const { toPlainError } = require("./helpers.util");
+const {wrikeApiClient} = require("../../../configurations/httpClients");
 
 // ВАЛІДНИЙ формат для Wrike: "[TaskCreated,CommentAdded]"
 const WANT_EVENTS = ["TaskCreated", "CommentAdded"];
@@ -50,7 +51,7 @@ async function ensureWebhookRegistered(baseUrlOverride) {
     console.log("📤 Creating webhook with events:", EVENTS_STRING);
 
     try {
-        const {data} = await wrike.post("/webhooks", body.toString(), {
+        const {data} = await wrikeApiClient.post("/webhooks", body.toString(), {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Accept": "application/json"

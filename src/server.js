@@ -1,54 +1,44 @@
-const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
+
+const express = require( 'express' );
+const cors = require( 'cors' );
+const dotenv = require( 'dotenv' );
 dotenv.config();
+const dotcmsRouter = require( './routes/dotcmsRouter' );
+const backendRouter = require( './routes/backendRouter' );
+const config = require( '../config' );
+const wrikeRoutes = require( './routes/wrikeRoutes' );
+const {ensureWebhookRegistered} = require( "./shared/utils/wrike-webhook/webhooks.util" );
+const {startLocalTunnel} = require("./shared/utils/wrike-webhook/localtunnel.util");
 
-const dotcmsRouter = require('./routes/dotcmsRouter');
-const backendRouter = require('./routes/backendRouter');
-const wrikeRoutes = require('./routes/wrikeRoutes');
-
-const { ensureWebhookRegistered } = require('./shared/utils/wrike-webhook/webhooks.util');
-const {initBrowser} = require("./controllers/wrike/pdf.controller");
-// const { startLocalTunnel } = require('./shared/utils/wrike-webhook/localtunnel.util'); // лише локально
-
-const { PORT = 3000 } = process.env;
+const { PORT, LT_ENABLE, PUBLIC_BASE_URL } = require("./configurations/env.variables");
 
 const app = express();
 
-app.use(cors());
-app.set('trust proxy', true);
+app.use( cors() );
+app.set( "trust proxy",true );
 
-/** ✅ Глобальні парсери з лімітами */
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use( express.json( {
+    verify:( req,_res,buf ) => {
+        req.rawBody = buf;
+    }
+} ) );
 
-/** ✅ raw body лише для вебхука (приклад) */
-// app.post('/wrike/webhook', express.raw({ type: 'application/json', limit: '5mb' }), wrikeWebhookHandler);
+app.use( express.json( {strict:false} ) );
 
-/** ✅ Роути */
-app.use('/dotcms', dotcmsRouter);
-app.use('/back-end', backendRouter);
-app.use('/wrike', wrikeRoutes);
+app.use( '/dotcms',dotcmsRouter );
+app.use( '/back-end',backendRouter );
+app.use( '/wrike',wrikeRoutes );
 
-/** ✅ Health/Ping */
 
 app.listen(PORT, async () => {
     console.log(`✅ Server on http://localhost:${PORT}`);
-
-    // ✅ Безпечна ініціалізація PUBLIC_BASE_URL
-    const publicBaseUrl =
-        (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
-    console.log(`Public base: ${publicBaseUrl || '(not set)'}`);
-    console.log(`Has WRIKE_TOKEN: ${!!process.env.WRIKE_TOKEN_API}`);
+    let publicBaseUrl = (PUBLIC_BASE_URL || "").replace(/\/$/, "");
+    console.log(`Public base (env): ${publicBaseUrl || "(not set)"}`);
 
     try {
-        if (publicBaseUrl) {
-            await ensureWebhookRegistered(publicBaseUrl);
-            console.log('Wrike webhook OK');
-        } else {
-            console.warn('⚠️ PUBLIC_BASE_URL/RENDER_EXTERNAL_URL не задано — пропускаю реєстрацію вебхука');
-        }
+        await ensureWebhookRegistered(publicBaseUrl);
+
     } catch (e) {
-        console.warn('⚠️ ensureWebhookRegistered failed:', e?.response?.data || e?.message || e);
+        console.warn("⚠️ Failed:", e?.response?.data || e?.message || e);
     }
 });

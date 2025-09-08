@@ -177,43 +177,7 @@ router.post( '/update-status',async ( req,res ) => {
     }
 });
 
-router.post('/proxy-check', async (req, res) => {
-    const { url, method = 'HEAD' } = req.body || {};
 
-    if (!url) {
-        return res.status(422).json({ ok: false, message: 'Missing url' });
-    }
-
-    try {
-        const agent = new ProxyAgent();
-
-        const resp = await axios.request({
-            url,
-            method: method.toUpperCase(),
-            timeout: 15000,
-            httpAgent: agent,
-            httpsAgent: agent,
-            validateStatus: () => true,
-        });
-
-        return res.json({
-            ok: true,
-            status: resp.status,
-            statusText: resp.statusText,
-            headers: {
-                'content-type': resp.headers['content-type'],
-                'content-length': resp.headers['content-length'],
-            },
-        });
-    } catch (e) {
-        return res.status(502).json({
-            ok: false,
-            message: e.message,
-            code: e.code || null,
-            status: e.response?.status || null,
-        });
-    }
-});
 router.post("/webhook", handleWrikeWebhook);
 
 module.exports = router;
