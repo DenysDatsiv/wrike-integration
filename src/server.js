@@ -14,20 +14,20 @@ const { PORT, LT_ENABLE, PUBLIC_BASE_URL } = require("./configurations/env.varia
 
 const app = express();
 
-app.use( cors() );
-app.set( "trust proxy",true );
+// src/server.js (уривок)
+app.use(cors());
+app.set('trust proxy', true);
 
-app.use( express.json( {
-    verify:( req,_res,buf ) => {
-        req.rawBody = buf;
-    }
-} ) );
+// Глобальний JSON-парсер для всіх ІНШИХ маршрутів (окрім /wrike/webhook)
+app.use((req, res, next) => {
+    if (req.path === '/wrike/webhook') return next(); // пропустити, там raw
+    express.json({ limit: '50mb', strict: false })(req, res, next);
+});
 
-app.use( express.json( {strict:false} ) );
-
-app.use( '/dotcms',dotcmsRouter );
-app.use( '/back-end',backendRouter );
-app.use( '/wrike',wrikeRoutes );
+// Роути
+app.use('/dotcms', dotcmsRouter);
+app.use('/back-end', backendRouter);
+app.use('/wrike', wrikeRoutes);
 
 
 app.listen(PORT, async () => {

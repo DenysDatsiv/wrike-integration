@@ -4,7 +4,7 @@ const axios = require("axios");
 const PORT = Number(process.env.PORT || 3000);
 const WRIKE_API_URL = process.env.WRIKE_API_URL || "https://www.wrike.com/api/v4";
 const WRIKE_API_TOKEN = process.env.WRIKE_API_TOKEN;
-const WEBHOOK_SECRET =  "super_long_random_secret_change_me";
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "super_long_random_secret_change_me";
 
 let PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
 

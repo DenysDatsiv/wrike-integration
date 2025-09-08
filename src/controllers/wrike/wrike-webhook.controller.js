@@ -159,13 +159,13 @@ async function updateTaskCustomField(taskId, customFieldId, value) {
 const handleWrikeWebhook = async ( req,res ) => {
     const xHookSecretHeader = req.get( "X-Hook-Secret" ) || "";
     if ( req.body && req.body.requestType === "WebHook secret verification" ){
-        const responseHeader = hmacSha256( "DSADASDASD",xHookSecretHeader );
+        const responseHeader = hmacSha256( process.env.WEBHOOK_SECRET,xHookSecretHeader );
         res.set( "X-Hook-Secret",responseHeader );
         return res.sendStatus( 200 );
     }
 
     const signatureHeader = req.get( "X-Hook-Signature" ) || req.get( "X-Hook-Secret" ) || "";
-    const expectedSig = hmacSha256( "Denys",req.rawBody || Buffer.from( "" ) );
+    const expectedSig = hmacSha256( process.env.WEBHOOK_SECRET,req.rawBody || Buffer.from( "" ) );
     if ( ! signatureHeader || signatureHeader !== expectedSig ) return res.status( 401 ).send( "Bad signature" );
 
     const batch = Array.isArray( req.body ) ? req.body : [req.body];
