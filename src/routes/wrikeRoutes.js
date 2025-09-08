@@ -178,6 +178,6 @@ router.post( '/update-status',async ( req,res ) => {
 });
 
 
-router.post("/webhook", handleWrikeWebhook);
+router.post('/webhook', express.raw({ type: '*/*', limit: '5mb' }), handleWrikeWebhook);
 
 module.exports = router;
