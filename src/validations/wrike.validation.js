@@ -55,6 +55,7 @@ const isValidDate = (v) => {
 };
 
 const validateRequired = (extracted) => {
+    console.log()
     const missing = [];
     const issues = [];
 
