@@ -31,22 +31,6 @@ app.use('/back-end', backendRouter);
 app.use('/wrike', wrikeRoutes);
 
 /** ✅ Health/Ping */
-app.get('/health', (_req, res) => res.json({ ok: true }));
-app.get('/wrike/ping', async (_req, res) => {
-    const axios = require('axios');
-    try {
-        const r = await axios.get('https://www.wrike.com/api/v4/version', {
-            headers: { Authorization: `Bearer ${process.env.WRIKE_TOKEN_API || ''}` },
-            timeout: 8000,
-        });
-        res.json({ ok: true, version: r.data });
-    } catch (e) {
-        res.status(e.response?.status || 500).json({
-            ok: false,
-            details: e.response?.data || e.message,
-        });
-    }
-});
 
 app.listen(PORT, async () => {
     console.log(`✅ Server on http://localhost:${PORT}`);
@@ -56,7 +40,6 @@ app.listen(PORT, async () => {
         (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
     console.log(`Public base: ${publicBaseUrl || '(not set)'}`);
     console.log(`Has WRIKE_TOKEN: ${!!process.env.WRIKE_TOKEN_API}`);
-    await initBrowser();
 
     try {
         if (publicBaseUrl) {
