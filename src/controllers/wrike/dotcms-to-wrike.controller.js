@@ -1,6 +1,11 @@
+/* eslint-disable no-console */
 const { wrikeApiClient } = require('../../configurations/httpClients');
 
-/* ==================== Custom Field IDs ==================== */
+// ---- Tiptap (ProseMirror JSON -> HTML) ----
+const { generateHTML } = require('@tiptap/html');
+const StarterKit = require('@tiptap/starter-kit').default;
+
+// ---- Custom Field IDs ----
 const CONTENT_FIELDS = {
     TITLE: 'IEAB3SKBJUAJBWGI',
     SUMMARY: 'IEAB3SKBJUAJBWGA',
@@ -13,16 +18,20 @@ const CONTENT_FIELDS = {
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
 };
 
-/* ==================== Helpers ==================== */
-const isPermalinkId = (val) => /^[0-9]+$/.test(String(val).trim());
+// ---- Helpers ----
+const isPermalinkId = (val) => /^[0-9]+$/.test(String(val || '').trim());
+
 const capitalizeFirst = (s) =>
     typeof s === 'string' && s.length ? s[0].toUpperCase() + s.slice(1) : s;
 
+// ISO/any Date -> dd/MM/yyyy (string-in, string-out)
 const formatDateToDDMMYYYY = (val) => {
     if (!val) return val;
     try {
+        // if val already looks like dd/MM/yyyy, keep it
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) return val;
         const d = new Date(val);
-        if (isNaN(d)) return val;
+        if (Number.isNaN(d.getTime())) return val;
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const yyyy = d.getFullYear();
@@ -32,113 +41,6 @@ const formatDateToDDMMYYYY = (val) => {
     }
 };
 
-/* ==================== ProseMirror JSON → HTML ==================== */
-function escapeHtml(str = '') {
-    return String(str)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;');
-}
-
-function renderMarks(text, marks = []) {
-    if (!marks || !marks.length) return text;
-    for (const m of marks) {
-        if (m.type === 'bold' || m.type === 'strong') {
-            text = `<strong>${text}</strong>`;
-        } else if (m.type === 'italic' || m.type === 'em') {
-            text = `<em>${text}</em>`;
-        } else if (m.type === 'underline') {
-            text = `<u>${text}</u>`;
-        } else if (m.type === 'strike' || m.type === 'strikethrough') {
-            text = `<s>${text}</s>`;
-        } else if (m.type === 'code') {
-            text = `<code>${text}</code>`;
-        } else if (m.type === 'link' && m.attrs?.href) {
-            const href = escapeHtml(m.attrs.href);
-            const target = m.attrs?.target ? ` target="${escapeHtml(m.attrs.target)}"` : '';
-            const rel = m.attrs?.rel ? ` rel="${escapeHtml(m.attrs.rel)}"` : '';
-            text = `<a href="${href}"${target}${rel}>${text}</a>`;
-        }
-    }
-    return text;
-}
-
-function renderInline(node) {
-    if (node.type === 'text') {
-        const safe = escapeHtml(node.text || '');
-        return renderMarks(safe, node.marks);
-    }
-    if (node.type === 'hardBreak') {
-        return '<br/>';
-    }
-    return '';
-}
-
-function renderInlineOrBlock(node) {
-    if (node.type === 'text' || node.type === 'hardBreak') {
-        return renderInline(node);
-    }
-    return renderBlock(node);
-}
-
-function renderBlock(node) {
-    switch (node.type) {
-        case 'paragraph': {
-            const inner = (node.content || []).map(renderInlineOrBlock).join('');
-            return `<p>${inner || '<br/>'}</p>`;
-        }
-        case 'heading': {
-            const level = Math.min(6, Math.max(1, Number(node.attrs?.level || 1)));
-            const inner = (node.content || []).map(renderInlineOrBlock).join('');
-            return `<h${level}>${inner}</h${level}>`;
-        }
-        case 'blockquote': {
-            const inner = (node.content || []).map(renderInlineOrBlock).join('');
-            return `<blockquote>${inner}</blockquote>`;
-        }
-        case 'codeBlock': {
-            const text = (node.content || [])
-                .map((n) => (n.type === 'text' ? escapeHtml(n.text || '') : ''))
-                .join('');
-            return `<pre><code>${text}</code></pre>`;
-        }
-        case 'bulletList': {
-            const items = (node.content || []).map(renderBlock).join('');
-            return `<ul>${items}</ul>`;
-        }
-        case 'orderedList': {
-            const start = node.attrs?.start ? ` start="${Number(node.attrs.start)}"` : '';
-            const items = (node.content || []).map(renderBlock).join('');
-            return `<ol${start}>${items}</ol>`;
-        }
-        case 'listItem': {
-            const inner = (node.content || []).map(renderInlineOrBlock).join('');
-            return `<li>${inner}</li>`;
-        }
-        case 'horizontalRule': {
-            return `<hr/>`;
-        }
-        default: {
-            if (node.content && Array.isArray(node.content)) {
-                return node.content.map(renderInlineOrBlock).join('');
-            }
-            return '';
-        }
-    }
-}
-
-function proseToHtml(doc) {
-    try {
-        if (!doc) return '';
-        const root = typeof doc === 'string' ? JSON.parse(doc) : doc;
-        const blocks = Array.isArray(root.content) ? root.content : [];
-        return blocks.map(renderBlock).join('');
-    } catch (e) {
-        return `<p>${escapeHtml(String(doc))}</p>`;
-    }
-}
-
-/* ==================== Build Custom Fields ==================== */
 function buildCustomFields(payload = {}) {
     const cf = [];
     const add = (id, val) => {
@@ -154,60 +56,102 @@ function buildCustomFields(payload = {}) {
         add(CONTENT_FIELDS.DATE_OF_PUBLICATION, formatDateToDDMMYYYY(payload.dateOfPublication));
     }
 
-    add(CONTENT_FIELDS.CONTENT, payload.content); // plain only
+    // Plain text only (Wrike custom fields do not render HTML)
+    add(CONTENT_FIELDS.CONTENT, payload.content);
+
     add(CONTENT_FIELDS.MEDIA_TYPE, payload.mediaType);
     add(CONTENT_FIELDS.META_DESCRIPTION, payload.metaDescription);
     add(CONTENT_FIELDS.META_TITLE, payload.metaTitle);
     add(CONTENT_FIELDS.IDENTIFIER, payload.identifier);
+    add(
+        CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
+        payload.allowUpdateOnly === true
+            ? 'true'
+            : payload.allowUpdateOnly === false
+                ? 'false'
+                : undefined
+    );
 
     return cf;
 }
 
-/* ==================== Controller ==================== */
+async function resolveApiTaskId(taskId) {
+    const raw = String(taskId).trim();
+    if (!isPermalinkId(raw)) return raw; // assume API id
+
+    const permalinkUrl = `https://www.wrike.com/open.htm?id=${encodeURIComponent(raw)}`;
+    const searchResp = await wrikeApiClient.get('/tasks', {
+        params: { permalink: permalinkUrl },
+        headers: { Accept: 'application/json' },
+    });
+    const found = searchResp.data?.data?.[0];
+    if (!found?.id) {
+        const err = new Error(`Wrike task with permalink id ${raw} not found or not accessible`);
+        err.status = 404;
+        err.details = searchResp.data;
+        throw err;
+    }
+    return found.id;
+}
+
+/**
+ * POST /wrike/dotcms-to-wrike-update
+ * Body (example for Block Editor only):
+ * {
+ *   "taskId": "1743772836",            // numeric permalink OR Wrike API id
+ *   "titleCF": "Заголовок статті",
+ *   "summary": "Короткий опис",
+ *   "mediaType": "article",            // will be capitalized -> "Article"
+ *   "dateOfPublication": "2025-09-10T12:00:00Z",
+ *   "content": "Плейн-текст без тегів",
+ *   "storyBlock": { ... ProseMirror JSON ... }  // will be converted to HTML for description
+ * }
+ */
 async function handleDotcmsToWrikeUpdate(req, res) {
+    // Log payload safely
     try {
-        console.log('[dotcms-to-wrike-update] Payload:', JSON.stringify(req.body, null, 2));
+        console.log('[dotcms-to-wrike-update] Incoming payload:\n', JSON.stringify(req.body, null, 2));
     } catch {
-        console.log('[dotcms-to-wrike-update] Payload (non-serializable)');
+        console.log('[dotcms-to-wrike-update] Incoming payload (non-serializable)');
     }
 
-    const { taskId, storyBlock, ...fields } = req.body || {};
+    const { taskId, storyBlock, contentHtml, ...fields } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
     try {
-        const raw = String(taskId).trim();
-        let apiTaskId = raw;
+        // 1) Resolve task id
+        const apiTaskId = await resolveApiTaskId(taskId);
 
-        // resolve permalink ID → API id
-        if (isPermalinkId(raw)) {
-            const permalinkUrl = `https://www.wrike.com/open.htm?id=${encodeURIComponent(raw)}`;
-            const searchResp = await wrikeApiClient.get('/tasks', {
-                params: { permalink: permalinkUrl },
-                headers: { Accept: 'application/json' },
-            });
-            const found = searchResp.data?.data?.[0];
-            if (!found?.id) {
-                return res.status(404).json({ ok: false, message: `Task ${raw} not found`, wrike: searchResp.data });
-            }
-            apiTaskId = found.id;
-        }
+        // 2) Normalize mediaType
+        if (fields.mediaType) fields.mediaType = capitalizeFirst(String(fields.mediaType).trim());
 
-        if (fields.mediaType) {
-            fields.mediaType = capitalizeFirst(String(fields.mediaType));
-        }
-
+        // 3) Build custom fields
         const customFields = buildCustomFields(fields);
 
-        // генеруємо HTML з storyBlock
+        // 4) Build description HTML
+        // Priority: explicit contentHtml > convert storyBlock > nothing
         let descriptionHtml = null;
-        if (storyBlock) {
-            descriptionHtml = proseToHtml(storyBlock);
+        if (contentHtml) {
+            descriptionHtml = String(contentHtml);
+        } else if (storyBlock) {
+            try {
+                const doc = typeof storyBlock === 'string' ? JSON.parse(storyBlock) : storyBlock;
+                descriptionHtml = generateHTML(doc, [StarterKit]);
+            } catch (convErr) {
+                console.warn('[dotcms-to-wrike-update] storyBlock convert error:', convErr?.message || convErr);
+            }
         }
 
         if (!customFields.length && !descriptionHtml) {
-            return res.status(400).json({ ok: false, error: 'No fields or storyBlock provided' });
+            return res.status(400).json({
+                ok: false,
+                error: 'No valid fields provided for update',
+                hint:
+                    'Provide at least one custom field (summary, metaTitle, content, mediaType, dateOfPublication, etc.) or storyBlock/contentHtml for description.',
+            });
         }
 
+        // 5) Prepare body & update
         const updateBody = {};
         if (customFields.length) updateBody.customFields = customFields;
         if (descriptionHtml) updateBody.description = descriptionHtml;
@@ -224,12 +168,12 @@ async function handleDotcmsToWrikeUpdate(req, res) {
             updated: updateResp.data?.data?.[0] || null,
         });
     } catch (err) {
-        const status = err.response?.status || 500;
+        const status = err.status || err.response?.status || 500;
         return res.status(status).json({
             ok: false,
             message: 'Failed to update Wrike ticket',
             error: err.message,
-            wrike: err.response?.data,
+            details: err.details || err.response?.data || null,
         });
     }
 }
