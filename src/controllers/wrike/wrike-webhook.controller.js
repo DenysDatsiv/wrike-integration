@@ -238,7 +238,6 @@ async function processEvent(e) {
         const isCreate = isCommand(text, 'create');
         const isUpdate = isCommand(text, 'update');
 
-        // 🔒 BLOCK create/update if the "touched in dotCMS" field is YES
         if (isCreate || isUpdate) {
             try {
                 const payload = await safeFetchTask(taskId);
