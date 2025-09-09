@@ -2,6 +2,7 @@ const REQUIRED_FIELDS = {
     title: "Title",
     dateOfPublication: "Date of publication",
     summary: "Summary",
+    content: "Content",
 };
 
 class ValidationError extends Error {
@@ -55,12 +56,12 @@ const isValidDate = (v) => {
 };
 
 const validateRequired = (extracted) => {
-    console.log()
     const missing = [];
     const issues = [];
 
     if (!extracted?.title?.trim()) missing.push(REQUIRED_FIELDS.title);
     if (!extracted?.summary?.trim()) missing.push(REQUIRED_FIELDS.summary);
+    if (!extracted?.content?.trim()) missing.push(REQUIRED_FIELDS.content);
 
     if (!extracted?.dateOfPublication) {
         missing.push(REQUIRED_FIELDS.dateOfPublication);
