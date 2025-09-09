@@ -27,7 +27,7 @@ const CONTENT_FIELDS = {
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
-    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJGE6G',
+    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJGE6G', // <- same field used to gate actions
 };
 
 const taskState = new Map();
@@ -238,6 +238,28 @@ async function processEvent(e) {
         const isCreate = isCommand(text, 'create');
         const isUpdate = isCommand(text, 'update');
 
+        // 🔒 BLOCK create/update if the "touched in dotCMS" field is YES
+        if (isCreate || isUpdate) {
+            try {
+                const payload = await safeFetchTask(taskId);
+                const tk = payload?.data?.[0] || {};
+                const cfs = tk.customFields || [];
+                const touchedVal = getCustomFieldValueById(cfs, CONTENT_FIELDS.TOUCHED_IN_DOTCMS);
+                if (isYes(touchedVal)) {
+                    await safePostComment(
+                        taskId,
+                        'ℹ️ This item was already **updated in dotCMS**. ' +
+                        'Further *create/update* actions from Wrike are **blocked**. ' +
+                        'Please continue editing **directly in dotCMS**.'
+                    );
+                    return; // stop here
+                }
+            } catch (checkErr) {
+                // if check fails, proceed normally (or log)
+                logEvent({ kind: 'warn', where: 'touched-check', error: toPlainError(checkErr), taskId });
+            }
+        }
+
         if (isCreate) {
             const extractedLite = await buildExtractedLite(taskId);
             if (extractedLite?.identifier && extractedLite.allowOnlyUpdate) {
@@ -286,6 +308,7 @@ async function buildExtractedLite(tid) {
         metaDescription: getCustomFieldValueById(cfs, CONTENT_FIELDS.META_DESCRIPTION),
         metaTitle: getCustomFieldValueById(cfs, CONTENT_FIELDS.META_TITLE),
         allowOnlyUpdate: isYes(getCustomFieldValueById(cfs, CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY)),
+        // (we check TOUCHED_IN_DOTCMS inline in processEvent to gate actions)
     });
 }
 
