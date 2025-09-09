@@ -27,7 +27,7 @@ const CONTENT_FIELDS = {
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
-    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJGE6G', // <- same field used to gate actions
+    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJHH5S', // <- same field used to gate actions
 };
 
 const taskState = new Map();
@@ -238,18 +238,25 @@ async function processEvent(e) {
         const isCreate = isCommand(text, 'create');
         const isUpdate = isCommand(text, 'update');
 
+        // 🔒 BLOCK create/update if the "touched in dotCMS" field is YES
         if (isCreate || isUpdate) {
             try {
                 const payload = await safeFetchTask(taskId);
                 const tk = payload?.data?.[0] || {};
                 const cfs = tk.customFields || [];
                 const touchedVal = getCustomFieldValueById(cfs, CONTENT_FIELDS.TOUCHED_IN_DOTCMS);
+                console.log(touchedVal)
                 if (isYes(touchedVal)) {
+                    const htmlBlockedMsg = [
+                        '<p>ℹ️ This item was already <strong>updated in dotCMS</strong>.</p>',
+                        '<br>',
+                        '<p>Further <em>create/update</em> actions from Wrike are <strong>blocked</strong>.</p>',
+                        '<br>',
+                        '<p>Please continue editing <strong>directly in dotCMS</strong>.</p>',
+                    ].join('');
                     await safePostComment(
                         taskId,
-                        'ℹ️ This item was already **updated in dotCMS**. ' +
-                        'Further *create/update* actions from Wrike are **blocked**. ' +
-                        'Please continue editing **directly in dotCMS**.'
+                        htmlBlockedMsg
                     );
                     return; // stop here
                 }
