@@ -61,7 +61,6 @@ app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
 app.use('/dotcms', dotcmsRouter);
 app.use('/back-end', backendRouter);
 app.use('/wrike', wrikeRoutes);
-// app.use('/wrike', wrikeRoutes);
 
 /** === 404 для інших === */
 app.use((req, res) => {
