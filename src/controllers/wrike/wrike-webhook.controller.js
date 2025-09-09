@@ -9,7 +9,7 @@ const {
     makeDedupeKey,
     normalizeExtracted,
     getCustomFieldValueById,
-    extractWrikeTaskId,
+    extractWrikeTaskId
 } = require('../../shared/utils/wrike-webhook/helpers.util');
 const { MSG } = require('../../shared/constants/wrike-webhook/answers.constant');
 const { validateRequired, buildValidationComment } = require('../../validations/wrike.validation');
@@ -27,7 +27,6 @@ const CONTENT_FIELDS = {
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
-    // ⚠️ Replace with the REAL CF id for "Modified in dotCMS" (timestamp/text field)
     TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJGE6G',
 };
 
@@ -87,16 +86,13 @@ const fetchContactById = async (id) => {
                 id: c.id,
                 firstName: c.firstName,
                 lastName: c.lastName,
-                name:
-                    c.firstName || c.lastName
-                        ? `${c.firstName || ''} ${c.lastName || ''}`.trim()
-                        : c.name || c.displayName || c.id,
+                name: (c.firstName || c.lastName)
+                    ? `${c.firstName || ''} ${c.lastName || ''}`.trim()
+                    : (c.name || c.displayName || c.id),
             };
             contactsCache.set(id, normalized);
             if (contactsCache.size > CONTACTS_CACHE_MAX) {
-                Array.from(contactsCache.keys())
-                    .slice(0, 50)
-                    .forEach((k) => contactsCache.delete(k));
+                Array.from(contactsCache.keys()).slice(0, 50).forEach(k => contactsCache.delete(k));
             }
             return normalized;
         }
@@ -189,37 +185,6 @@ function pickIdentifierFromDotCMS(resp) {
     );
 }
 
-/* ---------- NEW: Berlin timestamp + "Modified in dotCMS" setter ---------- */
-
-// dd/MM/yyyy HH:mm in Europe/Berlin
-function nowBerlin_ddMMyyyy_HHmm(date = new Date()) {
-    try {
-        const fmt = new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Europe/Berlin',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-        return fmt.format(date).replace(',', ''); // "dd/MM/yyyy HH:mm"
-    } catch {
-        const d = new Date(date);
-        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    }
-}
-
-async function setTouchedInDotcms(taskId, whenString) {
-    if (!CONTENT_FIELDS.TOUCHED_IN_DOTCMS) {
-        return { ok: false, skipped: true, reason: 'TOUCHED_IN_DOTCMS CF id not configured' };
-    }
-    const value = whenString || nowBerlin_ddMMyyyy_HHmm();
-    return await updateTaskCustomField(taskId, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, value);
-}
-
-/* ------------------------------------------------------------------------ */
-
 async function handleWrikeWebhook(req, res) {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const xHookSecret = req.get('X-Hook-Secret') || '';
@@ -245,7 +210,7 @@ async function handleWrikeWebhook(req, res) {
         return res.status(400).send('Bad JSON');
     }
 
-    Promise.allSettled(batch.map((e) => processEvent(e))).catch(() => {});
+    Promise.allSettled(batch.map(e => processEvent(e))).catch(() => {});
     return res.sendStatus(200);
 }
 
@@ -254,7 +219,7 @@ async function processEvent(e) {
         const key = makeDedupeKey(e);
         if (seen.has(key)) return;
         seen.add(key);
-        if (seen.size > SEEN_MAX) Array.from(seen).slice(0, 100).forEach((k) => seen.delete(k));
+        if (seen.size > SEEN_MAX) Array.from(seen).slice(0, 100).forEach(k => seen.delete(k));
 
         if (e.eventType === 'TaskCreated' && e.taskId) {
             ensureTaskState(e.taskId).createdSeen = true;
@@ -283,7 +248,7 @@ async function processEvent(e) {
             }
             await safePostComment(taskId, '🛠 Creating article…');
             queueMicrotask(() =>
-                heavyCreateFlow(taskId, st).catch((err) =>
+                heavyCreateFlow(taskId, st).catch(err =>
                     logEvent({ kind: 'error', where: 'heavyCreateFlow', error: toPlainError(err), taskId })
                 )
             );
@@ -293,7 +258,7 @@ async function processEvent(e) {
         if (isUpdate) {
             await safePostComment(taskId, MSG.updateStarting);
             queueMicrotask(() =>
-                heavyUpdateFlow(taskId, st).catch((err) =>
+                heavyUpdateFlow(taskId, st).catch(err =>
                     logEvent({ kind: 'error', where: 'heavyUpdateFlow', error: toPlainError(err), taskId })
                 )
             );
@@ -325,9 +290,7 @@ async function buildExtractedLite(tid) {
 }
 
 async function safePostComment(taskId, text) {
-    try {
-        await postComment(taskId, text);
-    } catch (e) {
+    try { await postComment(taskId, text); } catch (e) {
         logEvent({ kind: 'warn', where: 'postComment(ack)', error: toPlainError(e), taskId });
     }
 }
@@ -348,7 +311,8 @@ async function heavyCreateFlow(taskId, st) {
 
     let dotCMSArticle;
     try {
-        dotCMSArticle = await require('../../services/dotcms/dotcms.service').createInsight({ body: extracted || {} });
+        dotCMSArticle = await require('../../services/dotcms/dotcms.service')
+            .createInsight({ body: extracted || {} });
         console.log('[dotCMS] createInsight response:', safePreview(dotCMSArticle));
     } catch (err) {
         await safePostComment(taskId, `❌ Failed to create article: ${stripHtml(err?.message || 'Unknown error')}`);
@@ -377,13 +341,6 @@ async function heavyCreateFlow(taskId, st) {
         console.warn('[Wrike] Failed to set CREATED_FLAG_ALLOW_UPDATE_ONLY:', toPlainError(err));
     }
 
-    // ✅ Stamp "Modified in dotCMS" on create (optional but useful)
-    try {
-        await setTouchedInDotcms(taskId);
-    } catch (err) {
-        console.warn('[Wrike] Failed to set TOUCHED_IN_DOTCMS on create:', toPlainError(err));
-    }
-
     st.snapshot = extracted;
     st.lastSnapshotHash = hashObject(extracted);
     await safePostComment(taskId, MSG.created);
@@ -406,11 +363,8 @@ async function heavyUpdateFlow(taskId, st) {
     const nextHash = hashObject(extracted);
     const sameAsBefore = st.lastSnapshotHash && st.lastSnapshotHash === nextHash;
     const isEmpty =
-        !extracted?.title &&
-        !extracted?.summary &&
-        !extracted?.content &&
-        !extracted?.metaTitle &&
-        !extracted?.metaDescription;
+        !extracted?.title && !extracted?.summary && !extracted?.content &&
+        !extracted?.metaTitle && !extracted?.metaDescription;
 
     if (sameAsBefore || isEmpty) {
         await safePostComment(taskId, MSG.noChanges(st.lastUpdateAt || st.skeletonCreatedAt));
@@ -420,32 +374,13 @@ async function heavyUpdateFlow(taskId, st) {
 
     try {
         await updateContentletByIdentifier(extracted.identifier, { ...extracted });
-
-        // ✅ Stamp "Modified in dotCMS" after successful update
-        try {
-            const r = await setTouchedInDotcms(taskId);
-            if (r?.ok === false && !r?.skipped) {
-                console.warn('[Wrike] Failed to set TOUCHED_IN_DOTCMS on update:', r?.error, r?.details || '');
-            }
-        } catch (err) {
-            console.warn('[Wrike] Failed to set TOUCHED_IN_DOTCMS on update:', toPlainError(err));
-        }
-
         st.lastUpdateAt = new Date().toISOString();
         st.snapshot = extracted;
         st.lastSnapshotHash = nextHash;
         await safePostComment(taskId, MSG.updated);
     } catch (err) {
-        logEvent({
-            kind: 'error',
-            where: 'updateContentletByIdentifier',
-            error: err?.response?.data || err?.message,
-            taskId,
-        });
-        await safePostComment(
-            taskId,
-            `❌ Failed to update article: ${stripHtml(err?.response?.data?.message || err?.message || 'Unknown error')}`
-        );
+        logEvent({ kind: 'error', where: 'updateContentletByIdentifier', error: err?.response?.data || err?.message, taskId });
+        await safePostComment(taskId, `❌ Failed to update article: ${stripHtml(err?.response?.data?.message || err?.message || 'Unknown error')}`);
     }
 }
 

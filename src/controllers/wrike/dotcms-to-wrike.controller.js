@@ -15,20 +15,19 @@ const CONTENT_FIELDS = {
     META_DESCRIPTION: 'IEAB3SKBJUAJCDJC',
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
-    CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
+    // ⬇️ UPDATED: use this CF id and lowercase "yes"/"no"
+    CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJHH5S',
 };
 
 // ---- Helpers ----
 const isPermalinkId = (val) => /^[0-9]+$/.test(String(val || '').trim());
-
 const capitalizeFirst = (s) =>
     typeof s === 'string' && s.length ? s[0].toUpperCase() + s.slice(1) : s;
 
-// ISO/any Date -> dd/MM/yyyy (string-in, string-out)
+// ISO/any Date -> dd/MM/yyyy
 const formatDateToDDMMYYYY = (val) => {
     if (!val) return val;
     try {
-        // if val already looks like dd/MM/yyyy, keep it
         if (/^\d{2}\/\d{2}\/\d{4}$/.test(String(val))) return val;
         const d = new Date(val);
         if (Number.isNaN(d.getTime())) return val;
@@ -39,6 +38,16 @@ const formatDateToDDMMYYYY = (val) => {
     } catch {
         return val;
     }
+};
+
+// normalize to exactly "yes"/"no" (lowercase)
+const normalizeYesNo = (v) => {
+    if (v === undefined || v === null) return undefined;
+    const s = String(v).trim().toLowerCase();
+    if (v === true || ['yes', 'y', 'true', '1'].includes(s)) return 'yes';
+    if (v === false || ['no', 'n', 'false', '0'].includes(s)) return 'no';
+    if (s === 'yes' || s === 'no') return s;
+    return undefined;
 };
 
 function buildCustomFields(payload = {}) {
@@ -63,14 +72,10 @@ function buildCustomFields(payload = {}) {
     add(CONTENT_FIELDS.META_DESCRIPTION, payload.metaDescription);
     add(CONTENT_FIELDS.META_TITLE, payload.metaTitle);
     add(CONTENT_FIELDS.IDENTIFIER, payload.identifier);
-    add(
-        CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
-        payload.allowUpdateOnly === true
-            ? 'true'
-            : payload.allowUpdateOnly === false
-                ? 'false'
-                : undefined
-    );
+
+    // allowUpdateOnly -> "yes"/"no"
+    const allow = normalizeYesNo(payload.allowUpdateOnly);
+    add(CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY, allow);
 
     return cf;
 }
@@ -96,16 +101,9 @@ async function resolveApiTaskId(taskId) {
 
 /**
  * POST /wrike/dotcms-to-wrike-update
- * Body (example for Block Editor only):
- * {
- *   "taskId": "1743772836",            // numeric permalink OR Wrike API id
- *   "titleCF": "Заголовок статті",
- *   "summary": "Короткий опис",
- *   "mediaType": "article",            // will be capitalized -> "Article"
- *   "dateOfPublication": "2025-09-10T12:00:00Z",
- *   "content": "Плейн-текст без тегів",
- *   "storyBlock": { ... ProseMirror JSON ... }  // will be converted to HTML for description
- * }
+ * Supports:
+ *  A) Simple mode: { "taskId": "1743772836" } -> sets CREATED_FLAG_ALLOW_UPDATE_ONLY = "yes"
+ *  B) Full update:  taskId + custom fields and/or storyBlock/contentHtml
  */
 async function handleDotcmsToWrikeUpdate(req, res) {
     // Log payload safely
@@ -122,6 +120,36 @@ async function handleDotcmsToWrikeUpdate(req, res) {
         // 1) Resolve task id
         const apiTaskId = await resolveApiTaskId(taskId);
 
+        // ===== Simple mode: only { taskId } -> set CF to "yes" and return
+        const hasAnyOtherKey =
+            (storyBlock !== undefined) ||
+            (contentHtml !== undefined) ||
+            Object.keys(fields).length > 0;
+
+        if (!hasAnyOtherKey) {
+            const updateResp = await wrikeApiClient.put(
+                `/tasks/${encodeURIComponent(apiTaskId)}`,
+                {
+                    customFields: [
+                        {
+                            id: CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
+                            value: 'yes', // ⬅️ UPDATED: lowercase "yes"
+                        },
+                    ],
+                },
+                { headers: { 'Content-Type': 'application/json', Accept: 'application/json' } }
+            );
+            return res.status(200).json({
+                ok: true,
+                mode: 'simple',
+                taskId: apiTaskId,
+                field: CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
+                value: 'yes',
+                updated: updateResp.data?.data?.[0] || null,
+            });
+        }
+
+        // ===== Full update mode
         // 2) Normalize mediaType
         if (fields.mediaType) fields.mediaType = capitalizeFirst(String(fields.mediaType).trim());
 
@@ -147,7 +175,7 @@ async function handleDotcmsToWrikeUpdate(req, res) {
                 ok: false,
                 error: 'No valid fields provided for update',
                 hint:
-                    'Provide at least one custom field (summary, metaTitle, content, mediaType, dateOfPublication, etc.) or storyBlock/contentHtml for description.',
+                    'Provide at least one custom field (summary, metaTitle, content, mediaType, dateOfPublication, etc.) or storyBlock/contentHtml for description. Or send only {taskId} to set allowUpdateOnly=yes.',
             });
         }
 
@@ -164,6 +192,7 @@ async function handleDotcmsToWrikeUpdate(req, res) {
 
         return res.status(200).json({
             ok: true,
+            mode: 'full',
             taskId: apiTaskId,
             updated: updateResp.data?.data?.[0] || null,
         });
