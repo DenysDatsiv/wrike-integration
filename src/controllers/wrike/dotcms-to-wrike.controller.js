@@ -1,5 +1,6 @@
 const { wrikeApiClient } = require('../../configurations/httpClients');
 
+/* ==================== Custom Field IDs ==================== */
 const CONTENT_FIELDS = {
     TITLE: 'IEAB3SKBJUAJBWGI',
     SUMMARY: 'IEAB3SKBJUAJBWGA',
@@ -12,10 +13,132 @@ const CONTENT_FIELDS = {
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
 };
 
-// тільки цифри => це короткий permalink id
+/* ==================== Helpers ==================== */
 const isPermalinkId = (val) => /^[0-9]+$/.test(String(val).trim());
-const capitalizeFirst = (s) => (typeof s === 'string' && s.length ? s[0].toUpperCase() + s.slice(1) : s);
+const capitalizeFirst = (s) =>
+    typeof s === 'string' && s.length ? s[0].toUpperCase() + s.slice(1) : s;
 
+const formatDateToDDMMYYYY = (val) => {
+    if (!val) return val;
+    try {
+        const d = new Date(val);
+        if (isNaN(d)) return val;
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+    } catch {
+        return val;
+    }
+};
+
+/* ==================== ProseMirror JSON → HTML ==================== */
+function escapeHtml(str = '') {
+    return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+}
+
+function renderMarks(text, marks = []) {
+    if (!marks || !marks.length) return text;
+    for (const m of marks) {
+        if (m.type === 'bold' || m.type === 'strong') {
+            text = `<strong>${text}</strong>`;
+        } else if (m.type === 'italic' || m.type === 'em') {
+            text = `<em>${text}</em>`;
+        } else if (m.type === 'underline') {
+            text = `<u>${text}</u>`;
+        } else if (m.type === 'strike' || m.type === 'strikethrough') {
+            text = `<s>${text}</s>`;
+        } else if (m.type === 'code') {
+            text = `<code>${text}</code>`;
+        } else if (m.type === 'link' && m.attrs?.href) {
+            const href = escapeHtml(m.attrs.href);
+            const target = m.attrs?.target ? ` target="${escapeHtml(m.attrs.target)}"` : '';
+            const rel = m.attrs?.rel ? ` rel="${escapeHtml(m.attrs.rel)}"` : '';
+            text = `<a href="${href}"${target}${rel}>${text}</a>`;
+        }
+    }
+    return text;
+}
+
+function renderInline(node) {
+    if (node.type === 'text') {
+        const safe = escapeHtml(node.text || '');
+        return renderMarks(safe, node.marks);
+    }
+    if (node.type === 'hardBreak') {
+        return '<br/>';
+    }
+    return '';
+}
+
+function renderInlineOrBlock(node) {
+    if (node.type === 'text' || node.type === 'hardBreak') {
+        return renderInline(node);
+    }
+    return renderBlock(node);
+}
+
+function renderBlock(node) {
+    switch (node.type) {
+        case 'paragraph': {
+            const inner = (node.content || []).map(renderInlineOrBlock).join('');
+            return `<p>${inner || '<br/>'}</p>`;
+        }
+        case 'heading': {
+            const level = Math.min(6, Math.max(1, Number(node.attrs?.level || 1)));
+            const inner = (node.content || []).map(renderInlineOrBlock).join('');
+            return `<h${level}>${inner}</h${level}>`;
+        }
+        case 'blockquote': {
+            const inner = (node.content || []).map(renderInlineOrBlock).join('');
+            return `<blockquote>${inner}</blockquote>`;
+        }
+        case 'codeBlock': {
+            const text = (node.content || [])
+                .map((n) => (n.type === 'text' ? escapeHtml(n.text || '') : ''))
+                .join('');
+            return `<pre><code>${text}</code></pre>`;
+        }
+        case 'bulletList': {
+            const items = (node.content || []).map(renderBlock).join('');
+            return `<ul>${items}</ul>`;
+        }
+        case 'orderedList': {
+            const start = node.attrs?.start ? ` start="${Number(node.attrs.start)}"` : '';
+            const items = (node.content || []).map(renderBlock).join('');
+            return `<ol${start}>${items}</ol>`;
+        }
+        case 'listItem': {
+            const inner = (node.content || []).map(renderInlineOrBlock).join('');
+            return `<li>${inner}</li>`;
+        }
+        case 'horizontalRule': {
+            return `<hr/>`;
+        }
+        default: {
+            if (node.content && Array.isArray(node.content)) {
+                return node.content.map(renderInlineOrBlock).join('');
+            }
+            return '';
+        }
+    }
+}
+
+function proseToHtml(doc) {
+    try {
+        if (!doc) return '';
+        const root = typeof doc === 'string' ? JSON.parse(doc) : doc;
+        const blocks = Array.isArray(root.content) ? root.content : [];
+        return blocks.map(renderBlock).join('');
+    } catch (e) {
+        return `<p>${escapeHtml(String(doc))}</p>`;
+    }
+}
+
+/* ==================== Build Custom Fields ==================== */
 function buildCustomFields(payload = {}) {
     const cf = [];
     const add = (id, val) => {
@@ -24,101 +147,71 @@ function buildCustomFields(payload = {}) {
         }
     };
 
-    // ⚠️ mediaType вже приходить капіталізованим нижче (перед викликом цієї функції)
     add(CONTENT_FIELDS.TITLE, payload.titleCF);
     add(CONTENT_FIELDS.SUMMARY, payload.summary);
-    add(CONTENT_FIELDS.DATE_OF_PUBLICATION, payload.dateOfPublication);
-    add(CONTENT_FIELDS.CONTENT, payload.content); // лише plain text (HTML іде в description)
+
+    if (payload.dateOfPublication) {
+        add(CONTENT_FIELDS.DATE_OF_PUBLICATION, formatDateToDDMMYYYY(payload.dateOfPublication));
+    }
+
+    add(CONTENT_FIELDS.CONTENT, payload.content); // plain only
     add(CONTENT_FIELDS.MEDIA_TYPE, payload.mediaType);
     add(CONTENT_FIELDS.META_DESCRIPTION, payload.metaDescription);
     add(CONTENT_FIELDS.META_TITLE, payload.metaTitle);
     add(CONTENT_FIELDS.IDENTIFIER, payload.identifier);
-    add(
-        CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
-        payload.allowUpdateOnly === true ? 'true'
-            : payload.allowUpdateOnly === false ? 'false'
-                : undefined
-    );
 
     return cf;
 }
 
+/* ==================== Controller ==================== */
 async function handleDotcmsToWrikeUpdate(req, res) {
-    // 1) Логуємо вхідний payload
     try {
-        console.log('[dotcms-to-wrike-update] Incoming payload:', JSON.stringify(req.body, null, 2));
+        console.log('[dotcms-to-wrike-update] Payload:', JSON.stringify(req.body, null, 2));
     } catch {
-        console.log('[dotcms-to-wrike-update] Incoming payload (non-serializable)');
+        console.log('[dotcms-to-wrike-update] Payload (non-serializable)');
     }
 
-    const { taskId, contentHtml, ...fields } = req.body || {};
+    const { taskId, storyBlock, ...fields } = req.body || {};
     if (!taskId) return res.status(400).json({ error: 'taskId is required' });
 
     try {
         const raw = String(taskId).trim();
-
-        // 2) Резолвимо у справжній API task id
         let apiTaskId = raw;
 
+        // resolve permalink ID → API id
         if (isPermalinkId(raw)) {
             const permalinkUrl = `https://www.wrike.com/open.htm?id=${encodeURIComponent(raw)}`;
             const searchResp = await wrikeApiClient.get('/tasks', {
                 params: { permalink: permalinkUrl },
                 headers: { Accept: 'application/json' },
             });
-
             const found = searchResp.data?.data?.[0];
             if (!found?.id) {
-                return res.status(404).json({
-                    ok: false,
-                    message: `Wrike task with permalink id ${raw} not found`,
-                    hint: 'Перевірте правильність короткого ID та доступи токена.',
-                    wrike: searchResp.data,
-                });
+                return res.status(404).json({ ok: false, message: `Task ${raw} not found`, wrike: searchResp.data });
             }
             apiTaskId = found.id;
-        } else {
-            try {
-                await wrikeApiClient.get(`/tasks/${encodeURIComponent(apiTaskId)}`, {
-                    headers: { Accept: 'application/json' },
-                });
-            } catch (e) {
-                const st = e.response?.status;
-                if (st === 404) {
-                    return res.status(404).json({
-                        ok: false,
-                        message: `Wrike task ${apiTaskId} not found or not accessible`,
-                        hint: 'Можливо, це не API id. Якщо у вас короткий numeric id — передавайте його як permalink id.',
-                        wrike: e.response?.data,
-                    });
-                }
-                throw e;
-            }
         }
 
-        // 3) Капіталізуємо mediaType перед побудовою customFields
         if (fields.mediaType) {
             fields.mediaType = capitalizeFirst(String(fields.mediaType));
         }
 
-        // 4) Будуємо customFields (content = plain text), а HTML кладемо в description
         const customFields = buildCustomFields(fields);
 
-        // **ВАЖЛИВО**: дозволяємо оновлення навіть якщо є тільки contentHtml (тобто без customFields)
-        if (!customFields.length && !contentHtml) {
-            return res.status(400).json({
-                ok: false,
-                error: 'No valid fields provided for update',
-                hint: 'Передайте хоча б одне: summary, metaTitle, metaDescription, titleCF, content, mediaType, dateOfPublication, identifier, allowUpdateOnly або contentHtml (піде в description).',
-            });
+        // генеруємо HTML з storyBlock
+        let descriptionHtml = null;
+        if (storyBlock) {
+            descriptionHtml = proseToHtml(storyBlock);
         }
 
-        // 5) Формуємо тіло запиту
+        if (!customFields.length && !descriptionHtml) {
+            return res.status(400).json({ ok: false, error: 'No fields or storyBlock provided' });
+        }
+
         const updateBody = {};
         if (customFields.length) updateBody.customFields = customFields;
-        if (contentHtml) updateBody.description = String(contentHtml); // тут можна передати <ul>...</ul> і воно збережеться як HTML
+        if (descriptionHtml) updateBody.description = descriptionHtml;
 
-        // 6) Оновлення задачі
         const updateResp = await wrikeApiClient.put(
             `/tasks/${encodeURIComponent(apiTaskId)}`,
             updateBody,
