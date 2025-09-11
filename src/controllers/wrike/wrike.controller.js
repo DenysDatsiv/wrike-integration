@@ -227,10 +227,10 @@ async function createWrikeTicketController(req, res) {
         // --- Wrike payload (мінімальний)
         const payload = {
             title: title,
-            description: summary || '', // можна зібрати summary+content, якщо потрібно
             customFields,
         };
 
+        console.log(payload);
         // --- endpoint: у папку чи загальний
         const endpoint = folderId
             ? `/folders/${encodeURIComponent(folderId)}/tasks`
@@ -299,13 +299,15 @@ console.log(taskId)
         pushIfDefined(customFields, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, truthyYesNo(updatedInDotcms));
 
         // 3) PUT /tasks/{taskId}
-        const payload = { title, description: summary || '', customFields };
+        const payload = { title, customFields };
         const { data } = await wrikeApiClient.put(`/tasks/${encodeURIComponent(taskId)}`, payload);
 
         const updated = Array.isArray(data?.data) ? data.data[0] : undefined;
         if (!updated) {
             return res.status(502).json({ error: 'Unexpected Wrike response', raw: data });
         }
+        console.log(payload);
+
 
         return res.status(200).json({
             id: updated.id,
