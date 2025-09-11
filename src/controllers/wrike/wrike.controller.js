@@ -230,7 +230,6 @@ async function createWrikeTicketController(req, res) {
             customFields,
         };
 
-        console.log(payload);
         // --- endpoint: у папку чи загальний
         const endpoint = folderId
             ? `/folders/${encodeURIComponent(folderId)}/tasks`
@@ -306,7 +305,6 @@ console.log(taskId)
         if (!updated) {
             return res.status(502).json({ error: 'Unexpected Wrike response', raw: data });
         }
-        console.log(payload);
 
 
         return res.status(200).json({

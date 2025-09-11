@@ -103,7 +103,6 @@ router.post('/send-for-review', async (req, res) => {
 
         await withStage('uploadFile', async () => {
             await uploadFileToWrike(wrikeId, pdfBuffer, fileName);
-            // optionally: await addCommentToWrikeTask(wrikeId, url, fileName);
         });
 
         return res.status(200).json({
