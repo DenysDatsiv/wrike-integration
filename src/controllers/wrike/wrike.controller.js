@@ -130,8 +130,8 @@ const CONTENT_FIELDS = {
     META_DESCRIPTION: 'IEAB3SKBJUAJCDJC',
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
-    // ⬇️ lowercase "yes"/"no"
-    CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJHH5S',
+    CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
+    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJHH5S', // <- same field used to gate actions
 };
 
 // ---- 3) Допоміжні утиліти --------------------------------------------------
@@ -194,6 +194,7 @@ async function createWrikeTicketController(req, res) {
             metaTitle,
             identifier,
             allowUpdateOnly,
+            updatedInDotcms,
         } = req.body || {};
 
         // --- валідація мінімуму
@@ -220,6 +221,8 @@ async function createWrikeTicketController(req, res) {
             CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
             truthyYesNo(allowUpdateOnly)
         );
+        pushIfDefined(customFields, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, truthyYesNo(updatedInDotcms));
+
 
         // --- Wrike payload (мінімальний)
         const payload = {
@@ -272,6 +275,7 @@ async function updateWrikeTicketController(req, res) {
             metaTitle,
             identifier,
             allowUpdateOnly,
+            updatedInDotcms
         } = req.body || {};
 
         if (!rawTaskId || typeof rawTaskId !== 'string') {
@@ -292,6 +296,7 @@ console.log(taskId)
         pushIfDefined(customFields, CONTENT_FIELDS.META_TITLE, metaTitle);
         pushIfDefined(customFields, CONTENT_FIELDS.IDENTIFIER, identifier);
         pushIfDefined(customFields, CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY, truthyYesNo(allowUpdateOnly));
+        pushIfDefined(customFields, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, truthyYesNo(updatedInDotcms));
 
         // 3) PUT /tasks/{taskId}
         const payload = { title, description: summary || '', customFields };
@@ -319,4 +324,4 @@ console.log(taskId)
 
 module.exports = {
     uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController,updateWrikeTicketController
-};
+};x
