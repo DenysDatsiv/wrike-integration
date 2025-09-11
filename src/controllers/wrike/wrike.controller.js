@@ -259,6 +259,81 @@ async function createWrikeTicketController(req, res) {
         });
     }
 }
+async function updateWrikeTicketController(req, res) {
+    try {
+        const {
+            taskId, // ← тепер очікуємо taskId (наприклад: "1747137082")
+            title,
+            summary,
+            content,
+            dateOfPublication,
+            mediaType,
+            metaDescription,
+            metaTitle,
+            identifier,
+            allowUpdateOnly,
+        } = req.body || {};
+
+        if (!taskId || typeof taskId !== 'string') {
+            return res.status(400).json({ error: 'Field "taskId" is required' });
+        }
+
+        // --- формуємо customFields масив
+        const customFields = [];
+        pushIfDefined(customFields, CONTENT_FIELDS.TITLE, title);
+        pushIfDefined(customFields, CONTENT_FIELDS.SUMMARY, summary);
+        pushIfDefined(
+            customFields,
+            CONTENT_FIELDS.DATE_OF_PUBLICATION,
+            toYyyyMmDd(dateOfPublication)
+        );
+        pushIfDefined(customFields, CONTENT_FIELDS.CONTENT, content);
+        pushIfDefined(customFields, CONTENT_FIELDS.MEDIA_TYPE, mediaType);
+        pushIfDefined(customFields, CONTENT_FIELDS.META_DESCRIPTION, metaDescription);
+        pushIfDefined(customFields, CONTENT_FIELDS.META_TITLE, metaTitle);
+        pushIfDefined(customFields, CONTENT_FIELDS.IDENTIFIER, identifier);
+        pushIfDefined(
+            customFields,
+            CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
+            truthyYesNo(allowUpdateOnly)
+        );
+
+        // --- Wrike payload
+        const payload = {
+            title: title,
+            description: summary || '',
+            customFields,
+        };
+
+        // --- endpoint: update task by ID
+        const endpoint = `/tasks/${encodeURIComponent(taskId)}`;
+
+        const { data } = await wrikeApiClient.put(endpoint, payload);
+
+        // Wrike response: { kind: "tasks", data: [ { id, permalink, ... } ] }
+        const updated = Array.isArray(data?.data) ? data.data[0] : undefined;
+        if (!updated) {
+            return res.status(502).json({
+                error: 'Unexpected Wrike response',
+                raw: data,
+            });
+        }
+
+        return res.status(200).json({
+            id: updated.id,
+            permalink: updated.permalink,
+            title: updated.title,
+            customFieldsApplied: customFields.length,
+        });
+    } catch (err) {
+        const status = err.response?.status || 500;
+        return res.status(status).json({
+            error: err.response?.data?.errorDescription || err.message || 'Wrike update error',
+            details: err.response?.data || null,
+        });
+    }
+}
+
 module.exports = {
-    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController
+    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController,updateWrikeTicketController
 };

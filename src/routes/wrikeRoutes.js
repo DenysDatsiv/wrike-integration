@@ -6,7 +6,7 @@ const {
     uploadFileToWrike,
     addCommentToWrikeTask,
     updateWrikeTaskStatus,
-    getWrikeTaskId, createWrikeTicketController,
+    getWrikeTaskId, createWrikeTicketController,updateWrikeTicketController
 } = require('../controllers/wrike/wrike.controller');
 
 const { handleWrikeWebhook } = require('../controllers/wrike/wrike-webhook.controller');
@@ -143,5 +143,6 @@ router.post('/update-status', async (req, res) => {
 
 router.post('/dotcms-to-wrike-update', handleDotcmsToWrikeUpdate);
 router.post("/create-ticket",createWrikeTicketController)
+router.put("/create-ticket",updateWrikeTicketController)
 
 module.exports = router;
