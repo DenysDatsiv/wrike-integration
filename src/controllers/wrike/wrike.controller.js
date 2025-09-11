@@ -194,7 +194,7 @@ async function createWrikeTicketController(req, res) {
             metaTitle,
             identifier,
             allowUpdateOnly,
-            updatedInDotcms,
+            updatedInDotcms
         } = req.body || {};
 
         // --- валідація мінімуму
@@ -324,4 +324,4 @@ console.log(taskId)
 
 module.exports = {
     uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController,updateWrikeTicketController
-};x
+};
