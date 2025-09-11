@@ -143,6 +143,6 @@ router.post('/update-status', async (req, res) => {
 
 router.post('/dotcms-to-wrike-update', handleDotcmsToWrikeUpdate);
 router.post("/create-ticket",createWrikeTicketController)
-router.put("/create-ticket",updateWrikeTicketController)
+router.put("/update-ticket",updateWrikeTicketController)
 
 module.exports = router;
