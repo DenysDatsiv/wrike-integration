@@ -119,6 +119,146 @@ async function updateWrikeTaskStatus( taskId,newStatusId,axiosCfg = {} ){
     return res.data;
 }
 
+
+// ---- 2) Custom Fields (ваші ідентифікатори) --------------------------------
+const CONTENT_FIELDS = {
+    TITLE: 'IEAB3SKBJUAJBWGI',
+    SUMMARY: 'IEAB3SKBJUAJBWGA',
+    DATE_OF_PUBLICATION: 'IEAB3SKBJUAJBWFK',
+    CONTENT: 'IEAB3SKBJUAI5VKH',
+    MEDIA_TYPE: 'IEAB3SKBJUAJBYKR',
+    META_DESCRIPTION: 'IEAB3SKBJUAJCDJC',
+    META_TITLE: 'IEAB3SKBJUAJCDIR',
+    IDENTIFIER: 'IEAB3SKBJUAJGDGR',
+    // ⬇️ lowercase "yes"/"no"
+    CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJHH5S',
+};
+
+// ---- 3) Допоміжні утиліти --------------------------------------------------
+function toYyyyMmDd(input) {
+    if (!input) return undefined;
+    // приймає Date | number | string і приводить до YYYY-MM-DD
+    const d = new Date(input);
+    if (Number.isNaN(d.getTime())) return undefined;
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function truthyYesNo(v) {
+    // приводимо до 'yes'/'no' (lowercase), за замовчуванням 'no'
+    const t = typeof v === 'string' ? v.trim().toLowerCase() : v;
+    const isTrue =
+        t === true ||
+        t === 'true' ||
+        t === '1' ||
+        t === 'yes' ||
+        t === 'y' ||
+        t === 1;
+    return isTrue ? 'yes' : 'no';
+}
+
+function pushIfDefined(arr, id, value) {
+    if (value !== undefined && value !== null && value !== '') {
+        arr.push({ id, value });
+    }
+}
+
+// ---- 4) Контролер (все-в-одному) -------------------------------------------
+/**
+ * Очікуване тіло запиту (JSON):
+ * {
+ *   "folderId": "IEAB3...",        // (опційно) куди створюємо задачy: /folders/{id}/tasks; якщо нема — /tasks
+ *   "title": "Заголовок задачі",   // (обов'язково)
+ *   "summary": "Короткий опис",
+ *   "content": "<p>HTML або текст</p>",
+ *   "dateOfPublication": "2025-09-30" | 1696032000000 | "2025-09-30T00:00:00Z",
+ *   "mediaType": "Article" | "Video" | "...", // значення вашого CF (тип залежить від конфігурації у Wrike)
+ *   "metaDescription": "SEO description",
+ *   "metaTitle": "SEO title",
+ *   "identifier": "ext-12345",
+ *   "allowUpdateOnly": true | false | "yes" | "no"
+ * }
+ */
+async function createWrikeTicketController(req, res) {
+    try {
+        const {
+            folderId,
+            title,
+            summary,
+            content,
+            dateOfPublication,
+            mediaType,
+            metaDescription,
+            metaTitle,
+            identifier,
+            allowUpdateOnly,
+        } = req.body || {};
+
+        // --- валідація мінімуму
+        if (!title || typeof title !== 'string' || !title.trim()) {
+            return res.status(400).json({ error: 'Field "title" is required' });
+        }
+
+        // --- формуємо customFields масив
+        const customFields = [];
+        pushIfDefined(customFields, CONTENT_FIELDS.TITLE, title);
+        pushIfDefined(customFields, CONTENT_FIELDS.SUMMARY, summary);
+        pushIfDefined(
+            customFields,
+            CONTENT_FIELDS.DATE_OF_PUBLICATION,
+            toYyyyMmDd(dateOfPublication)
+        );
+        pushIfDefined(customFields, CONTENT_FIELDS.CONTENT, content);
+        pushIfDefined(customFields, CONTENT_FIELDS.MEDIA_TYPE, mediaType);
+        pushIfDefined(customFields, CONTENT_FIELDS.META_DESCRIPTION, metaDescription);
+        pushIfDefined(customFields, CONTENT_FIELDS.META_TITLE, metaTitle);
+        pushIfDefined(customFields, CONTENT_FIELDS.IDENTIFIER, identifier);
+        pushIfDefined(
+            customFields,
+            CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
+            truthyYesNo(allowUpdateOnly)
+        );
+
+        // --- Wrike payload (мінімальний)
+        const payload = {
+            title: title,
+            description: summary || '', // можна зібрати summary+content, якщо потрібно
+            customFields,
+        };
+
+        // --- endpoint: у папку чи загальний
+        const endpoint = folderId
+            ? `/folders/${encodeURIComponent(folderId)}/tasks`
+            : `/tasks`;
+
+        const { data } = await wrikeApiClient.post(endpoint, payload);
+
+        // Стандартна відповідь Wrike: { kind: "tasks", data: [ { id, permalink, ... } ] }
+        const created = Array.isArray(data?.data) ? data.data[0] : undefined;
+        if (!created) {
+            return res.status(502).json({
+                error: 'Unexpected Wrike response',
+                raw: data,
+            });
+        }
+
+        return res.status(201).json({
+            id: created.id,
+            permalink: created.permalink,
+            title: created.title,
+            customFieldsApplied: customFields.length,
+        });
+    } catch (err) {
+        // уніфікована помилка
+        const status = err.response?.status || 500;
+        return res.status(status).json({
+            error: err.response?.data?.errorDescription || err.message || 'Wrike error',
+            details: err.response?.data || null,
+        });
+    }
+}
 module.exports = {
-    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId
+    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController
 };
