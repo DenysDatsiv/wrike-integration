@@ -3,6 +3,7 @@ const REQUIRED_FIELDS = {
     dateOfPublication: "Date of publication",
     summary: "Summary",
     content: "Content",
+    mediaType: "Media Type",
 };
 
 class ValidationError extends Error {
@@ -62,6 +63,7 @@ const validateRequired = (extracted) => {
     if (!extracted?.title?.trim()) missing.push(REQUIRED_FIELDS.title);
     if (!extracted?.summary?.trim()) missing.push(REQUIRED_FIELDS.summary);
     if (!extracted?.content?.trim()) missing.push(REQUIRED_FIELDS.content);
+    if (!extracted?.mediaType?.trim()) missing.push(REQUIRED_FIELDS.mediaType);
 
     if (!extracted?.dateOfPublication) {
         missing.push(REQUIRED_FIELDS.dateOfPublication);
