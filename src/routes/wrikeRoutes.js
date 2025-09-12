@@ -12,6 +12,7 @@ const {
 const { handleWrikeWebhook } = require('../controllers/wrike/wrike-webhook.controller');
 const { handleDotcmsToWrikeUpdate } = require('../controllers/wrike/dotcms-to-wrike.controller');
 const { extractFileNameFromUrl } = require('../shared/utils/article-name-extracting');
+const axios = require("axios");
 
 // ⚠️ На рівні app додаємо app.use(express.json()) — див. server.js
 
@@ -143,6 +144,68 @@ router.post('/update-status', async (req, res) => {
 router.post('/dotcms-to-wrike-update', handleDotcmsToWrikeUpdate);
 router.post("/create-ticket",createWrikeTicketController)
 router.put("/update-ticket",updateWrikeTicketController)
-router.post("prod-published",addCommentWithSlugToWrikeTask)
+router.post("/prod-published", async (req, res) => {
+    try {
+        const { taskId, titleUrlSlug } = req.body || {};
 
+        if (!taskId)       return res.status(400).json({ ok: false, error: "taskId is required" });
+        if (!titleUrlSlug) return res.status(400).json({ ok: false, error: "titleUrlSlug is required" });
+
+        const rawTaskId = await getWrikeTaskId(taskId);
+
+        // Build PROD URL
+        const slug = String(titleUrlSlug).replace(/^\/+/, "");
+        const prodUrl = `https://test-domain.com/${slug}`;
+
+        const now = new Date();
+        const months = [
+            "January","February","March","April","May","June",
+            "July","August","September","October","November","December"
+        ];
+        const pad = (n) => String(n).padStart(2, "0");
+
+// build long US format: September 12, 2025, 2:35 PM
+        let hours = now.getHours();
+        const minutes = pad(now.getMinutes());
+        const ampm = hours >= 12 ? "PM" : "AM";
+        hours = hours % 12;
+        hours = hours ? hours : 12; // convert 0 -> 12
+
+        const timestamp = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}, ${hours}:${minutes} ${ampm}`;
+
+        // Comment body (простий HTML, як ви просили)
+        const comment = `
+Great news! The article has just been published to production.<br/><br/>
+
+🔗 <a href="${prodUrl}" target="_blank">Live Link:</a><br/><br/>
+
+📅 <strong>Published on:</strong> ${timestamp}<br/>
+`;
+
+        // Обережно з base URL (може не мати слеша в кінці)
+        const baseApi = String(process.env.WRIKE_API_URL || "").replace(/\/?$/, "/");
+
+        await axios.post(
+            `${baseApi}tasks/${rawTaskId}/comments`,
+            { text: comment },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.WRIKE_API_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                timeout: 30000,
+            }
+        );
+
+        return res.status(200).json({
+            ok: true,
+            taskId: rawTaskId,
+            prodUrl,
+            timestamp,
+        });
+    } catch (err) {
+        const msg = err?.response?.data || err?.message || "Unknown error";
+        return res.status(500).json({ ok: false, error: msg });
+    }
+});
 module.exports = router;
