@@ -164,7 +164,6 @@ router.post("/prod-published", async (req, res) => {
         ];
         const pad = (n) => String(n).padStart(2, "0");
 
-// build long US format: September 12, 2025, 2:35 PM
         let hours = now.getHours();
         const minutes = pad(now.getMinutes());
         const ampm = hours >= 12 ? "PM" : "AM";
