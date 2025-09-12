@@ -15,6 +15,21 @@ const { extractFileNameFromUrl } = require('../shared/utils/article-name-extract
 const axios = require("axios");
 
 // ⚠️ На рівні app додаємо app.use(express.json()) — див. server.js
+function formatUSDateTime(date) {
+    const pad = (n) => String(n).padStart(2, "0");
+
+    const month = pad(date.getMonth() + 1); // місяці від 0 → +1
+    const day = pad(date.getDate());
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = pad(date.getMinutes());
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+
+    return `${month}/${day}/${year}, ${hours}:${minutes} ${ampm}`;
+}
 
 // --- send-for-review ---
 router.post('/send-for-review', async (req, res) => {
@@ -157,20 +172,9 @@ router.post("/prod-published", async (req, res) => {
         const slug = String(titleUrlSlug).replace(/^\/+/, "");
         const prodUrl = `https://test-domain.com/${slug}`;
 
-        const now = new Date();
-        const months = [
-            "January","February","March","April","May","June",
-            "July","August","September","October","November","December"
-        ];
-        const pad = (n) => String(n).padStart(2, "0");
 
-        let hours = now.getHours();
-        const minutes = pad(now.getMinutes());
-        const ampm = hours >= 12 ? "PM" : "AM";
-        hours = hours % 12;
-        hours = hours ? hours : 12; // convert 0 -> 12
 
-        const timestamp = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}, ${hours}:${minutes} ${ampm}`;
+        const timestamp = formatUSDateTime(new Date());
 
         // Comment body (простий HTML, як ви просили)
         const comment = `
@@ -207,21 +211,6 @@ Great news! The article has just been published to production.<br/><br/>
         return res.status(500).json({ ok: false, error: msg });
     }
 });
-function formatLongUSDate(date) {
-    const months = [
-        "January","February","March","April","May","June",
-        "July","August","September","October","November","December"
-    ];
-    const pad = (n) => String(n).padStart(2, "0");
-
-    let hours = date.getHours();
-    const minutes = pad(date.getMinutes());
-    const ampm = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12;
-    hours = hours ? hours : 12;
-
-    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}, ${hours}:${minutes} ${ampm}`;
-}
 
 router.post("/unpublish", async (req, res) => {
     try {
@@ -231,7 +220,7 @@ router.post("/unpublish", async (req, res) => {
 
 
         // Timestamp
-        const timestamp = formatLongUSDate(new Date());
+        const timestamp = formatUSDateTime(new Date());
 
         // Comment body
         const comment = `

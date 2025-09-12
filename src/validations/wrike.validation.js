@@ -57,7 +57,7 @@ const isValidDate = (v) => {
 };
 
 const validateRequired = (extracted) => {
-    console.log(extracted);
+    console.log(extracted?.mediaType?.trim());
     const missing = [];
     const issues = [];
 
@@ -71,6 +71,8 @@ const validateRequired = (extracted) => {
     } else if (!isValidDate(extracted.dateOfPublication)) {
         issues.push(`${REQUIRED_FIELDS.dateOfPublication} must be a valid date (YYYY-MM-DD recommended).`);
     }
+
+    console.log(missing)
 
     return { ok: missing.length === 0 && issues.length === 0, missing, issues };
 };

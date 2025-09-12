@@ -310,7 +310,7 @@ async function buildExtractedLite(tid) {
         summary: getCustomFieldValueById(cfs, CONTENT_FIELDS.SUMMARY),
         dateOfPublication: getCustomFieldValueById(cfs, CONTENT_FIELDS.DATE_OF_PUBLICATION),
         content: getCustomFieldValueById(cfs, CONTENT_FIELDS.CONTENT),
-        mediaType: getCustomFieldValueById(cfs, CONTENT_FIELDS.MEDIA_TYPE) || 'read',
+        mediaType: getCustomFieldValueById(cfs, CONTENT_FIELDS.MEDIA_TYPE),
         metaDescription: getCustomFieldValueById(cfs, CONTENT_FIELDS.META_DESCRIPTION),
         metaTitle: getCustomFieldValueById(cfs, CONTENT_FIELDS.META_TITLE),
         allowOnlyUpdate: isYes(getCustomFieldValueById(cfs, CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY)),
@@ -326,7 +326,7 @@ async function safePostComment(taskId, text) {
 
 async function heavyCreateFlow(taskId, st) {
     const extracted = await buildExtractedLite(taskId);
-
+console.log(extracted)
     const v = validateRequired(extracted);
     if (!v.ok) {
         await safePostComment(taskId, buildValidationComment(v));
