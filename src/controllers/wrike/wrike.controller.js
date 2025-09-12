@@ -131,8 +131,14 @@ const CONTENT_FIELDS = {
     META_TITLE: 'IEAB3SKBJUAJCDIR',
     IDENTIFIER: 'IEAB3SKBJUAJGDGR',
     CREATED_FLAG_ALLOW_UPDATE_ONLY: 'IEAB3SKBJUAJGE6G',
-    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJHH5S', // <- same field used to gate actions
+    TOUCHED_IN_DOTCMS: 'IEAB3SKBJUAJHH5S',
+
+    // --- NEW fields
+    DELIVERABLE_TYPE: 'IEAB3SKBJUAFYBUE', // value: Web – Article
+    REQUEST_TYPE:     'IEAB3SKBJUACUE4K', // value: Web – Article
+    PUBLICATIONS:     'IEAB3SKBJUADBQRN', // value: ["#MacroMemo"]
 };
+Примітки:
 
 // ---- 3) Допоміжні утиліти --------------------------------------------------
 function toYyyyMmDd(input) {
@@ -197,12 +203,12 @@ async function createWrikeTicketController(req, res) {
             updatedInDotcms
         } = req.body || {};
 
-        // --- валідація мінімуму
+        // --- minimal validation
         if (!title || typeof title !== 'string' || !title.trim()) {
             return res.status(400).json({ error: 'Field "title" is required' });
         }
 
-        // --- формуємо customFields масив
+        // --- build customFields array
         const customFields = [];
 
         pushIfDefined(customFields, CONTENT_FIELDS.TITLE, title);
@@ -222,25 +228,32 @@ async function createWrikeTicketController(req, res) {
             CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY,
             truthyYesNo(allowUpdateOnly)
         );
-        pushIfDefined(customFields, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, truthyYesNo(updatedInDotcms));
+        pushIfDefined(
+            customFields,
+            CONTENT_FIELDS.TOUCHED_IN_DOTCMS,
+            truthyYesNo(updatedInDotcms)
+        );
 
-        // --- Wrike payload (мінімальний)
+        // --- NEW: fixed-value CFs (always include)
+        customFields.push(
+            { id: CONTENT_FIELDS.DELIVERABLE_TYPE, value: 'Web – Article' },
+            { id: CONTENT_FIELDS.REQUEST_TYPE,    value: 'Article Page' },
+            { id: CONTENT_FIELDS.PUBLICATIONS,     value: '["#MacroMemo"]' }
+        );
+
+        // --- Wrike payload (minimal)
         const payload = {
             title: title,
             customFields,
         };
 
-        console.log(payload)
-
-
-        // --- endpoint: у папку чи загальний
+        // --- choose endpoint: into specific folder or general
         const endpoint = folderId
             ? `/folders/${encodeURIComponent(folderId)}/tasks`
             : `/tasks`;
 
         const { data } = await wrikeApiClient.post(endpoint, payload);
 
-        // Стандартна відповідь Wrike: { kind: "tasks", data: [ { id, permalink, ... } ] }
         const created = Array.isArray(data?.data) ? data.data[0] : undefined;
         if (!created) {
             return res.status(502).json({
@@ -256,7 +269,6 @@ async function createWrikeTicketController(req, res) {
             customFieldsApplied: customFields.length,
         });
     } catch (err) {
-        // уніфікована помилка
         const status = err.response?.status || 500;
         return res.status(status).json({
             error: err.response?.data?.errorDescription || err.message || 'Wrike error',
