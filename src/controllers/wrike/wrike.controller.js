@@ -204,6 +204,7 @@ async function createWrikeTicketController(req, res) {
 
         // --- формуємо customFields масив
         const customFields = [];
+
         pushIfDefined(customFields, CONTENT_FIELDS.TITLE, title);
         pushIfDefined(customFields, CONTENT_FIELDS.SUMMARY, summary);
         pushIfDefined(
@@ -223,12 +224,14 @@ async function createWrikeTicketController(req, res) {
         );
         pushIfDefined(customFields, CONTENT_FIELDS.TOUCHED_IN_DOTCMS, truthyYesNo(updatedInDotcms));
 
-
         // --- Wrike payload (мінімальний)
         const payload = {
             title: title,
             customFields,
         };
+
+        console.log(payload)
+
 
         // --- endpoint: у папку чи загальний
         const endpoint = folderId
@@ -322,6 +325,41 @@ console.log(taskId)
     }
 }
 
+async function addCommentWithSlugToWrikeTask(taskId, titleUrlSlug) {
+    if (!taskId) throw new Error("taskId is required");
+    if (!titleUrlSlug) throw new Error("titleUrlSlug is required");
+const PROD_DOMAIN = "https://prod-domain.com"
+    // Build PROD URL
+    const prodUrl = `${PROD_DOMAIN}/${titleUrlSlug}`;
+    const rawTaskId = await getWrikeTaskId(taskId);
+    // Timestamp with new Date
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+        `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    const comment = `
+<p>✅ The content has been published. Please check the production page and confirm the details.</p>
+
+<strong>Link:</strong> <a href="${prodUrl}" target="_blank">${prodUrl}</a><br/>
+<strong>Date:</strong> ${timestamp}<br/>
+<strong>Slug:</strong> ${titleUrlSlug}
+`;
+
+    // Send to Wrike
+    await axios.post(
+        `${process.env.WRIKE_API_URL.replace(/\/?$/, "/")}tasks/${rawTaskId}/comments`,
+        { text: comment },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.WRIKE_API_TOKEN}`,
+                "Content-Type": "application/json",
+            },
+            timeout: 30000,
+        }
+    );
+}
+
 module.exports = {
-    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController,updateWrikeTicketController
+    uploadFileToWrike,addCommentToWrikeTask,updateWrikeTaskStatus,getWrikeTaskId,createWrikeTicketController,updateWrikeTicketController,addCommentWithSlugToWrikeTask
 };
