@@ -229,8 +229,6 @@ router.post("/unpublish", async (req, res) => {
 
         if (!taskId) return res.status(400).json({ ok: false, error: "taskId is required" });
 
-        // Build PROD URL
-        const prodUrl = `https://test-domain.com/${slug}`;
 
         // Timestamp
         const timestamp = formatLongUSDate(new Date());
@@ -239,8 +237,6 @@ router.post("/unpublish", async (req, res) => {
         const comment = `
 ⚠️ The article has been <strong>unpublished</strong> from production.<br/><br/>
 📅 <strong>Unpublished at:</strong> ${timestamp}<br/>
-
-ℹ️ The content is no longer accessible on the production site.
 `;        const rawTaskId = await getWrikeTaskId(taskId);
 
 
@@ -258,7 +254,7 @@ router.post("/unpublish", async (req, res) => {
             }
         );
 
-        res.json({ ok: true, taskId, prodUrl, timestamp });
+        res.json({ ok: true, taskId, timestamp });
     } catch (err) {
         console.error(err);
         res.status(500).json({ ok: false, error: err.message || "Unknown error" });
