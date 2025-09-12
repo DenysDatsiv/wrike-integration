@@ -207,4 +207,61 @@ Great news! The article has just been published to production.<br/><br/>
         return res.status(500).json({ ok: false, error: msg });
     }
 });
+function formatLongUSDate(date) {
+    const months = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December"
+    ];
+    const pad = (n) => String(n).padStart(2, "0");
+
+    let hours = date.getHours();
+    const minutes = pad(date.getMinutes());
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}, ${hours}:${minutes} ${ampm}`;
+}
+
+router.post("/unpublish", async (req, res) => {
+    try {
+        const { taskId } = req.body || {};
+
+        if (!taskId) return res.status(400).json({ ok: false, error: "taskId is required" });
+
+        // Build PROD URL
+        const prodUrl = `https://test-domain.com/${slug}`;
+
+        // Timestamp
+        const timestamp = formatLongUSDate(new Date());
+
+        // Comment body
+        const comment = `
+⚠️ The article has been <strong>unpublished</strong> from production.<br/><br/>
+📅 <strong>Unpublished at:</strong> ${timestamp}<br/>
+
+ℹ️ The content is no longer accessible on the production site.
+`;        const rawTaskId = await getWrikeTaskId(taskId);
+
+
+        const baseApi = String(process.env.WRIKE_API_URL || "").replace(/\/?$/, "/");
+
+        await axios.post(
+            `${baseApi}tasks/${rawTaskId}/comments`,
+            { text: comment },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.WRIKE_API_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                timeout: 30000,
+            }
+        );
+
+        res.json({ ok: true, taskId, prodUrl, timestamp });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ ok: false, error: err.message || "Unknown error" });
+    }
+});
 module.exports = router;
