@@ -325,12 +325,14 @@ async function safePostComment(taskId, text) {
 }
 
 async function heavyCreateFlow(taskId, st) {
+    const errors = []; // ⬅️ тут збираємо всі помилки
+
     const extracted = await buildExtractedLite(taskId);
-console.log(extracted)
+    console.log(extracted);
+
     const v = validateRequired(extracted);
     if (!v.ok) {
-        await safePostComment(taskId, buildValidationComment(v));
-        return;
+        errors.push(buildValidationComment(v));
     }
 
     if (!st.skeletonCreated) {
@@ -339,41 +341,55 @@ console.log(extracted)
     }
 
     let dotCMSArticle;
-    try {
-        dotCMSArticle = await require('../../services/dotcms/dotcms.service')
-            .createInsight({ body: extracted || {} });
-        console.log('[dotCMS] createInsight response:', safePreview(dotCMSArticle));
-    } catch (err) {
-        await safePostComment(taskId, `❌ Failed to create article: ${stripHtml(err?.message || 'Unknown error')}`);
-        return;
+    if (errors.length === 0) {
+        try {
+            dotCMSArticle = await require('../../services/dotcms/dotcms.service')
+                .createInsight({ body: extracted || {} });
+            console.log('[dotCMS] createInsight response:', safePreview(dotCMSArticle));
+        } catch (err) {
+            errors.push(`❌ Failed to create article: ${stripHtml(err?.message || 'Unknown error')}`);
+        }
+    }
+
+    if (dotCMSArticle?.ok === false) {
+        const detailErrors = dotCMSArticle?.details?.errors || [];
+        for (const e of detailErrors) {
+            errors.push(`❌ ${e.message || e.errorCode}`);
+        }
     }
 
     const newIdentifier = pickIdentifierFromDotCMS(dotCMSArticle);
     console.log('[dotCMS] extracted identifier:', newIdentifier);
 
-    if (newIdentifier) {
+    if (dotCMSArticle && !newIdentifier && errors.length === 0) {
+        errors.push('⚠️ Article created in dotCMS but no identifier was returned.');
+    } else if (newIdentifier) {
         try {
             await updateTaskCustomField(taskId, CONTENT_FIELDS.IDENTIFIER, newIdentifier);
         } catch (err) {
-            console.warn('[Wrike] Failed to set IDENTIFIER CF:', toPlainError(err));
+            errors.push(`⚠️ Failed to set IDENTIFIER CF: ${toPlainError(err)}`);
         }
-    } else {
-        await safePostComment(taskId, '⚠️ Article created in dotCMS but no identifier was returned.');
     }
 
     try {
         const r = await updateTaskCustomField(taskId, CONTENT_FIELDS.CREATED_FLAG_ALLOW_UPDATE_ONLY, 'Yes');
         if (r?.ok === false) {
-            console.warn('[Wrike] Failed to set CREATED_FLAG_ALLOW_UPDATE_ONLY:', r?.error, r?.details || '');
+            errors.push(`⚠️ Failed to set CREATED_FLAG_ALLOW_UPDATE_ONLY: ${r?.error || ''} ${r?.details || ''}`);
         }
     } catch (err) {
-        console.warn('[Wrike] Failed to set CREATED_FLAG_ALLOW_UPDATE_ONLY:', toPlainError(err));
+        errors.push(`⚠️ Failed to set CREATED_FLAG_ALLOW_UPDATE_ONLY: ${toPlainError(err)}`);
     }
 
     st.snapshot = extracted;
     st.lastSnapshotHash = hashObject(extracted);
-    await safePostComment(taskId, MSG.created);
+
+    if (errors.length > 0) {
+        await safePostComment(taskId, errors.join('<br/>'));
+    } else {
+        await safePostComment(taskId, MSG.created);
+    }
 }
+
 
 async function heavyUpdateFlow(taskId, st) {
     const extracted = await buildExtractedLite(taskId);
