@@ -144,7 +144,7 @@ function rewriteDocumentUrls(apiData, origin = `http://localhost:${PORT}`) {
             const doctype = parts[idx + 4];
 
             if (cusip && doctype) {
-                doc.url = `${origin}/api/dfin/documents/cusip/${encodeURIComponent(
+                doc.url = `${`https://wrike-integration.onrender.com`}/api/dfin/documents/cusip/${encodeURIComponent(
                     cusip
                 )}/doctype/${encodeURIComponent(doctype)}`;
             }
