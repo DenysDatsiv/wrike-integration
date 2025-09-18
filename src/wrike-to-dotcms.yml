@@ -1,0 +1,59 @@
+version: 1
+name: wrike_to_dotcms_flow
+triggers:
+  - name: on_ticket_created
+    source: wrike.webhook
+    event: taskCreated
+  - name: on_comment_added
+    source: wrike.webhook
+    event: commentAdded
+commands:
+  create: "@dotcms Create"
+  update: "@dotcms Update"
+required_fields:
+  create:
+    - title
+    - summary
+    - body
+    - mediaType
+    - language
+    - category
+  update:
+    - identifier
+    - fieldsToUpdate
+flow:
+  - id: entrypoint
+    on:
+      - on_ticket_created
+      - on_comment_added
+    next: detect_intent
+  - id: detect_intent
+    decisions:
+      - when: event == taskCreated
+        then: await_command_comment
+      - when: comment contains @dotcms Create
+        then: handle_create
+      - when: comment contains @dotcms Update
+        then: handle_update
+      - when: else
+        then: ignore_event
+  - id: handle_create
+    steps:
+      - action: validate required_fields.create
+      - action: if missing -> wrike.comment ❌ missing fields
+      - action: check if article exists in dotCMS
+      - action: if exists -> wrike.comment ❌ already exists
+      - action: else -> create article in dotCMS
+      - action: set Wrike custom field dotcmsIdentifier + Created in dotcms=Yes
+      - action: wrike.comment ✅ created
+  - id: handle_update
+    steps:
+      - action: validate required_fields.update
+      - action: if missing -> wrike.comment ❌ missing fields
+      - action: check article in dotCMS
+      - action: if not found -> wrike.comment ℹ️ use Create
+      - action: else -> verify lastEditor == bot
+      - action: if manual edit detected -> wrike.comment ❌ manual edit restriction
+      - action: compare fields with Wrike
+      - action: if no changes -> wrike.comment ⚠️ no changes
+      - action: else patch article -> wrike.comment ✅ updated

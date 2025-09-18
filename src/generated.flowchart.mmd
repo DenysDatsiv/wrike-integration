@@ -1,0 +1,23 @@
+flowchart TD
+  A[Wrike event received] --> B{event}
+  B -->|taskCreated| C[Log & wait for @dotcms command]
+  B -->|commentAdded| D{Command?}
+  D -->|@dotcms Create| E[Collect create fields]
+  D -->|@dotcms Update| M[Collect update fields]
+  D -->|otherwise| Z[Ignore]
+  E --> F{Validate required create}
+  F -->|missing| G[Wrike ❌ missing fields]
+  F -->|ok| H[findArticle(slug)]
+  H -->|exists| I[Wrike ❌ already exists]
+  H -->|not found| J[createArticle]
+  J -->|success| K[Wrike ✅ created]
+  J -->|error| L[Wrike ❌ create failed]
+  M --> N{Validate required update}
+  N -->|missing| O[Wrike ❌ missing fields]
+  N -->|ok| P[findArticle(identifier)]
+  P -->|not found| Q[Wrike ℹ️ use @dotcms Create]
+  P -->|found| R[getCurrent + computeChanges]
+  R -->|no changes| S[Wrike ⚠️ no changes]
+  R -->|changes| T[patchArticle]
+  T -->|success| U[Wrike ✅ updated]
+  T -->|error| V[Wrike ❌ update failed]

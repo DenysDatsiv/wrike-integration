@@ -1,0 +1,33 @@
+@startuml
+title wrike_to_dotcms_flow
+start
+:Received Wrike event (taskCreated/commentAdded);
+-> detect_intent
+if (event == taskCreated) then (yes)
+  -> await_command_comment
+elseif (comment contains @dotcms Create)
+  -> handle_create
+elseif (comment contains @dotcms Update)
+  -> handle_update
+else (no)
+  -> ignore_event
+endif
+-> handle_create
+:validate required_fields.create;
+:if missing -> wrike.comment ❌ missing fields;
+:check if article exists in dotCMS;
+:if exists -> wrike.comment ❌ already exists;
+:else -> create article in dotCMS;
+:set Wrike custom field dotcmsIdentifier + Created in dotcms=Yes;
+:wrike.comment ✅ created;
+-> handle_update
+:validate required_fields.update;
+:if missing -> wrike.comment ❌ missing fields;
+:check article in dotCMS;
+:if not found -> wrike.comment ℹ️ use Create;
+:else -> verify lastEditor == bot;
+:if manual edit detected -> wrike.comment ❌ manual edit restriction;
+:compare fields with Wrike;
+:if no changes -> wrike.comment ⚠️ no changes;
+:else patch article -> wrike.comment ✅ updated;
+@enduml

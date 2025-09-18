@@ -1,0 +1,54 @@
+@startuml
+title Sequence: wrike_to_dotcms_flow
+actor User as U
+participant Wrike as W
+participant "Integration Service" as I
+participant dotCMS as D
+
+U -> W: Comments @dotcms Create / @dotcms Update in task
+W -> I: webhook(commentAdded + task payload)
+
+alt @dotcms Create
+  I -> I: validate(required create fields)
+  alt missing fields
+    I -> W: Comment: "❌ Create: missing required fields"
+  else ok
+    I -> D: findArticle(slug/identifier)
+    alt exists
+      I -> W: Comment: "❌ Create: article already exists"
+    else not found
+      I -> D: createArticle(fields)
+      alt success
+        I -> W: Comment: "✅ Created (identifier, url)"
+      else fail
+        I -> W: Comment: "❌ Create failed: ..."
+      end
+    end
+  end
+else @dotcms Update
+  I -> I: validate(required update fields)
+  alt missing fields
+    I -> W: Comment: "❌ Update: missing required fields"
+  else ok
+    I -> D: findArticle(identifier)
+    alt not found
+      I -> W: Comment: "ℹ️ Not found. Use @dotcms Create."
+    else found
+        I -> D: get current fields
+        I -> I: computeChanges(current, incoming)
+        alt no changes
+          I -> W: Comment: "⚠️ Update: no changes"
+        else changed
+          I -> D: patchArticle(identifier, patch)
+          alt success
+            I -> W: Comment: "✅ Updated. Changed fields: {...}"
+          else fail
+            I -> W: Comment: "❌ Update failed: ..."
+          end
+        end
+    end
+  end
+else No @dotcms command
+  I -> I: Ignore event
+end
+@enduml
