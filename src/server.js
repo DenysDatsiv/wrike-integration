@@ -86,7 +86,7 @@
 //     }
 // });
 // server.js
-
+// server.js
 const express = require("express");
 const cors = require("cors");
 const { HttpsProxyAgent } = require("https-proxy-agent");
@@ -94,47 +94,111 @@ const { HttpProxyAgent } = require("http-proxy-agent");
 const axios = require("axios");
 const { pipeline } = require("stream");
 const { URL } = require("url");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+const archiver = require("archiver");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ==== CONFIG ====
+/* =========================
+   CONFIG
+========================= */
 const SUBSCRIPTION_KEY =
     process.env.DFIN_SUBSCRIPTION_KEY ||
-    "9fb1445aa3e8420a8837a541b3f16786";
+    "9fb1445aa3e8420a8837a541b3f16786"; // <-- override in prod
 
+// Single funds endpoint (GLT site variant)
 const FUNDS_URL =
     "https://services.dfinsolutions.com/EntityService/entities/customers/usrbcgam/sites/Funds/GLT";
 
+// Document service base
 const DOC_BASE =
     "https://services.dfinsolutions.com/documentservice/documents";
 
-// Проксі-агенти (якщо треба)
+// Optional outbound proxies
 const httpsAgent = process.env.HTTPS_PROXY
     ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
     : undefined;
-
 const httpAgent = process.env.HTTP_PROXY
     ? new HttpProxyAgent(process.env.HTTP_PROXY)
     : undefined;
 
-// ==== CORS ====
+/* =========================
+   MIDDLEWARE
+========================= */
+app.use(express.json());
 app.use(
     cors({
-        origin: "http://localhost:4200",
-        methods: ["GET", "OPTIONS"],
+        origin: ["http://localhost:4200", process.env.CORS_ORIGIN].filter(Boolean),
+        methods: ["GET", "POST", "OPTIONS"],
         allowedHeaders: ["Content-Type"],
         optionsSuccessStatus: 204,
     })
 );
 
-// Якщо хочеш явно обробляти preflight для всіх шляхів
-// app.options(/.*/, (req, res) => res.sendStatus(204));
+/* =========================
+   SWAGGER (OpenAPI)
+========================= */
+const swaggerOptions = {
+    definition: {
+        openapi: "3.0.0",
+        info: {
+            title: "DFIN Proxy API",
+            version: "1.2.0",
+            description:
+                "Proxy API for DFIN services (funds, documents) with health check and batch utilities.",
+        },
+        servers: [{ url: `http://localhost:${PORT}` }],
+        components: {
+            schemas: {
+                BatchArrayItem: {
+                    type: "object",
+                    required: ["cusip", "doctype"],
+                    properties: {
+                        cusip: { type: "string", example: "74933U753" },
+                        doctype: {
+                            type: "array",
+                            items: { type: "string", example: "P" },
+                        },
+                        filenamePrefix: {
+                            type: "string",
+                            example: "RBC_Fund",
+                        },
+                    },
+                },
+                BatchLinksResultItem: {
+                    type: "object",
+                    properties: {
+                        index: { type: "integer" },
+                        ok: { type: "boolean" },
+                        cusip: { type: "string" },
+                        error: { type: "string", nullable: true },
+                        items: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    doctype: { type: "string" },
+                                    url: { type: "string" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+    apis: [__filename],
+};
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// ==== HELPERS ====
-
-// Переписуємо document.url -> локальний роут
-function rewriteDocumentUrls(apiData, origin = `http://localhost:${PORT}`) {
+/* =========================
+   HELPERS
+========================= */
+// Rewrites source document URLs to local proxy URLs
+function rewriteDocumentUrls(apiData, origin) {
     const tryRewrite = (doc) => {
         try {
             const u = new URL(doc.url);
@@ -142,9 +206,8 @@ function rewriteDocumentUrls(apiData, origin = `http://localhost:${PORT}`) {
             const idx = parts.findIndex((p) => p === "documents");
             const cusip = parts[idx + 2];
             const doctype = parts[idx + 4];
-
             if (cusip && doctype) {
-                doc.url = `${`https://wrike-integration.onrender.com`}/api/dfin/documents/cusip/${encodeURIComponent(
+                doc.url = `${origin}/api/dfin/documents/cusip/${encodeURIComponent(
                     cusip
                 )}/doctype/${encodeURIComponent(doctype)}`;
             }
@@ -165,9 +228,39 @@ function rewriteDocumentUrls(apiData, origin = `http://localhost:${PORT}`) {
     return apiData;
 }
 
-// ==== ROUTES ====
+const fetchDfinDocStream = async (cusip, doctype) => {
+    const targetUrl = `${DOC_BASE}/cusip/${encodeURIComponent(
+        cusip
+    )}/doctype/${encodeURIComponent(doctype)}`;
+    return axios.get(targetUrl, {
+        params: { "subscription-key": SUBSCRIPTION_KEY },
+        responseType: "stream",
+        proxy: false,
+        httpsAgent,
+        httpAgent,
+        timeout: 60000,
+        validateStatus: () => true,
+    });
+};
 
-// Funds endpoint
+const safeName = (s) =>
+    (s || "")
+        .replace(/[\r\n"]/g, "")
+        .replace(/[/\\?%*:|<>]/g, "-");
+
+/* =========================
+   ROUTES
+========================= */
+
+/**
+ * @swagger
+ * /api/funds:
+ *   get:
+ *     summary: Get funds data (GLT) with document URLs rewritten to local proxy
+ *     responses:
+ *       200:
+ *         description: Funds payload with rewritten document URLs
+ */
 app.get("/api/funds", async (req, res) => {
     try {
         const response = await axios.get(FUNDS_URL, {
@@ -178,62 +271,279 @@ app.get("/api/funds", async (req, res) => {
             timeout: 30000,
         });
 
-        const rewritten = rewriteDocumentUrls(response.data);
+        const origin =
+            process.env.PUBLIC_BASE_URL ||
+            `${req.protocol}://${req.get("host") || `localhost:${PORT}`}`;
+
+        const rewritten = rewriteDocumentUrls(response.data, origin);
         res.json({ ok: true, data: rewritten });
     } catch (err) {
         console.error("[/api/funds] error:", err?.message);
-        res.status(500).json({ ok: false, error: err?.message || "Request failed" });
+        res
+            .status(500)
+            .json({ ok: false, error: err?.message || "Request failed" });
     }
 });
 
-// Proxy documents (FORCE DOWNLOAD)
-app.get("/api/dfin/documents/cusip/:cusip/doctype/:doctype", async (req, res) => {
-    const { cusip, doctype } = req.params;
-    const requestedName = (req.query.filename || "").toString();
+/**
+ * @swagger
+ * /api/dfin/documents/cusip/{cusip}/doctype/{doctype}:
+ *   get:
+ *     summary: Proxy a single DFIN document by cusip and doctype (forces download)
+ *     parameters:
+ *       - in: path
+ *         name: cusip
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: doctype
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: filename
+ *         required: false
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: PDF stream
+ */
+app.get(
+    "/api/dfin/documents/cusip/:cusip/doctype/:doctype",
+    async (req, res) => {
+        const { cusip, doctype } = req.params;
+        const requestedName = (req.query.filename || "").toString();
+        try {
+            const upstream = await fetchDfinDocStream(cusip, doctype);
 
+            res.status(upstream.status);
+            const ct = upstream.headers["content-type"] || "application/pdf";
+            res.setHeader("Content-Type", ct);
+
+            const fallbackName = `document_${cusip}_${doctype}.pdf`;
+            const finalName = safeName(requestedName) || fallbackName;
+
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${finalName}"`
+            );
+
+            pipeline(upstream.data, res, (e) => {
+                if (e) console.error("Stream pipeline error:", e.message);
+            });
+        } catch (err) {
+            console.error("[/api/dfin/documents/*] error:", err?.message);
+            res
+                .status(500)
+                .json({ ok: false, error: err?.message || "Proxy failed" });
+        }
+    }
+);
+
+/**
+ * @swagger
+ * /api/dfin/documents/batch/links:
+ *   post:
+ *     summary: Return local proxy URLs for multiple items (root-level array)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: array
+ *             items: { $ref: "#/components/schemas/BatchArrayItem" }
+ *           example:
+ *             - cusip: "74933U753"
+ *               doctype: ["P","SAR"]
+ *               filenamePrefix: "RBC_Fund"
+ *             - cusip: "74933U754"
+ *               doctype: ["P"]
+ *     responses:
+ *       200:
+ *         description: Per-item list of local proxy URLs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 results:
+ *                   type: array
+ *                   items: { $ref: "#/components/schemas/BatchLinksResultItem" }
+ */
+app.post("/api/dfin/documents/batch/links", async (req, res) => {
+    const body = req.body;
+    if (!Array.isArray(body) || body.length === 0) {
+        return res.status(400).json({
+            ok: false,
+            error:
+                "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix? }",
+        });
+    }
+
+    const origin =
+        process.env.PUBLIC_BASE_URL ||
+        `${req.protocol}://${req.get("host") || `localhost:${PORT}`}`;
+
+    const results = [];
+
+    for (const [index, item] of body.entries()) {
+        const { cusip, doctype } = item || {};
+        if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
+            results.push({
+                index,
+                ok: false,
+                cusip: cusip || null,
+                error: "Invalid item: require { cusip, doctype: string[] }",
+            });
+            continue;
+        }
+
+        const items = doctype.map((dt) => ({
+            doctype: dt,
+            url: `${origin}/api/dfin/documents/cusip/${encodeURIComponent(
+                cusip
+            )}/doctype/${encodeURIComponent(dt)}`,
+        }));
+
+        results.push({ index, ok: true, cusip, items });
+    }
+
+    res.json({ ok: true, results });
+});
+
+/**
+ * @swagger
+ * /api/dfin/documents/batch/zip:
+ *   post:
+ *     summary: Download many items (root-level array) as a single ZIP
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: array
+ *             items: { $ref: "#/components/schemas/BatchArrayItem" }
+ *           example:
+ *             - cusip: "74933U753"
+ *               doctype: ["P","SAR"]
+ *               filenamePrefix: "RBC_Fund"
+ *             - cusip: "74933U754"
+ *               doctype: ["P"]
+ *     responses:
+ *       200:
+ *         description: ZIP stream containing PDFs. Errors included as *_ERROR.txt entries.
+ */
+app.post("/api/dfin/documents/batch/zip", async (req, res) => {
+    const body = req.body;
+    if (!Array.isArray(body) || body.length === 0) {
+        return res.status(400).json({
+            ok: false,
+            error:
+                "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix? }",
+        });
+    }
+
+    const zipName = safeName(`dfin_documents_${Date.now()}.zip`);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => {
+        console.error("ZIP error:", err.message);
+        try {
+            res.status(500);
+        } catch (_) {}
+        res.end();
+    });
+    archive.pipe(res);
+
+    // Process sequentially to keep memory modest and ordering stable
+    for (const item of body) {
+        const { cusip, doctype, filenamePrefix } = item || {};
+        if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
+            archive.append(`Invalid item: require { cusip, doctype[] }\n`, {
+                name: `INVALID_ITEM_${Date.now()}.txt`,
+            });
+            continue;
+        }
+
+        const folder = safeName(cusip);
+        for (const dt of doctype) {
+            try {
+                const upstream = await fetchDfinDocStream(cusip, dt);
+                if (upstream.status !== 200) {
+                    archive.append(
+                        `Failed to fetch ${cusip}/${dt} (status ${upstream.status})\n`,
+                        { name: `${folder}/${cusip}_${dt}_ERROR.txt` }
+                    );
+                    continue;
+                }
+
+                const base = `${
+                    filenamePrefix ? safeName(filenamePrefix) + "_" : ""
+                }${cusip}_${dt}.pdf`;
+                archive.append(upstream.data, { name: `${folder}/${base}` });
+            } catch (e) {
+                archive.append(
+                    `Exception for ${cusip}/${dt}: ${e?.message || "unknown"}\n`,
+                    { name: `${folder}/${cusip}_${dt}_EXCEPTION.txt` }
+                );
+            }
+        }
+    }
+
+    archive.finalize();
+});
+
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: Health check - verify subscription key validity
+ *     responses:
+ *       200: { description: Subscription key valid }
+ *       401: { description: Invalid key }
+ */
+app.get("/api/health", async (req, res) => {
     try {
-        const targetUrl = `${DOC_BASE}/cusip/${encodeURIComponent(cusip)}/doctype/${encodeURIComponent(doctype)}`;
-
-        const upstream = await axios.get(targetUrl, {
+        const healthUrl =
+            "https://services.dfinsolutions.com/EntityService/entities/customers/usrbcgam/sites/Funds";
+        const response = await axios.get(healthUrl, {
             params: { "subscription-key": SUBSCRIPTION_KEY },
-            responseType: "stream",
             proxy: false,
             httpsAgent,
             httpAgent,
-            timeout: 60000,
+            timeout: 15000,
             validateStatus: () => true,
         });
 
-        // Проксі статус
-        res.status(upstream.status);
-
-        // Контент-тайп
-        const ct = upstream.headers["content-type"] || "application/pdf";
-        res.setHeader("Content-Type", ct);
-
-        // ⚠️ Форсуємо завантаження
-        // Якщо передали filename в query — використовуємо його
-        const safe = (s) =>
-            (s || "")
-                .replace(/[\r\n"]/g, "")       // прибрати небезпечні символи
-                .replace(/[/\\?%*:|<>]/g, "-"); // прибрати недопустимі для назв
-
-        const fallbackName = `document_${cusip}_${doctype}.pdf`;
-        const finalName = safe(requestedName) || fallbackName;
-
-        res.setHeader("Content-Disposition", `attachment; filename="${finalName}"`);
-        // Додатково можна: res.setHeader("X-Download-Options", "noopen");
-
-        pipeline(upstream.data, res, (e) => {
-            if (e) console.error("Stream pipeline error:", e.message);
-        });
+        if (response.status === 200 && response.data) {
+            res.json({
+                ok: true,
+                status: response.status,
+                message: "Subscription key is valid",
+            });
+        } else {
+            res.status(response.status).json({
+                ok: false,
+                status: response.status,
+                message: "Subscription key invalid or request failed",
+                details: response.data || null,
+            });
+        }
     } catch (err) {
-        console.error("[/api/dfin/documents/*] error:", err?.message);
-        res.status(500).json({ ok: false, error: err?.message || "Proxy failed" });
+        console.error("[/api/health] error:", err?.message);
+        res
+            .status(500)
+            .json({ ok: false, error: err?.message || "Health check failed" });
     }
 });
 
-
+/* =========================
+   SERVER START
+========================= */
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📖 Swagger docs:      http://localhost:${PORT}/api/docs`);
 });
+
