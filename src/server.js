@@ -87,6 +87,7 @@
 // });
 // server.js
 // server.js
+
 const express = require("express");
 const cors = require("cors");
 const { HttpsProxyAgent } = require("https-proxy-agent");
@@ -499,6 +500,8 @@ app.post("/api/dfin/documents/batch/zip", async (req, res) => {
 });
 
 
+<<<<<<< HEAD
+=======
 /**
  * @swagger
  * /api/health:
@@ -508,6 +511,7 @@ app.post("/api/dfin/documents/batch/zip", async (req, res) => {
  *       200: { description: Subscription key valid }
  *       401: { description: Invalid key }
  */
+>>>>>>> origin/main
 app.get("/api/health", async (req, res) => {
     try {
         const healthUrl =
