@@ -500,18 +500,6 @@ app.post("/api/dfin/documents/batch/zip", async (req, res) => {
 });
 
 
-<<<<<<< HEAD
-=======
-/**
- * @swagger
- * /api/health:
- *   get:
- *     summary: Health check - verify subscription key validity
- *     responses:
- *       200: { description: Subscription key valid }
- *       401: { description: Invalid key }
- */
->>>>>>> origin/main
 app.get("/api/health", async (req, res) => {
     try {
         const healthUrl =
