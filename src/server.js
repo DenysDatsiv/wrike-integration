@@ -129,14 +129,8 @@ const httpAgent = process.env.HTTP_PROXY
    MIDDLEWARE
 ========================= */
 app.use(express.json());
-app.use(
-    cors({
-        origin: ["http://localhost:4200", process.env.CORS_ORIGIN].filter(Boolean),
-        methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: ["Content-Type"],
-        optionsSuccessStatus: 204,
-    })
-);
+app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
+app.options('*', cors());
 
 /* =========================
    SWAGGER (OpenAPI)
