@@ -87,7 +87,6 @@
 // });
 // server.js
 // server.js
-
 const express = require("express");
 const cors = require("cors");
 const { HttpsProxyAgent } = require("https-proxy-agent");
@@ -129,8 +128,7 @@ const httpAgent = process.env.HTTP_PROXY
    MIDDLEWARE
 ========================= */
 app.use(express.json());
-app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
-app.options('*', cors());
+app.use(cors()); 
 
 /* =========================
    SWAGGER (OpenAPI)
@@ -429,68 +427,65 @@ app.post("/api/dfin/documents/batch/links", async (req, res) => {
  *         description: ZIP stream containing PDFs. Errors included as *_ERROR.txt entries.
  */
 app.post("/api/dfin/documents/batch/zip", async (req, res) => {
-  const body = req.body;
-  if (!Array.isArray(body) || body.length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix?, ticker? }",
-    });
-  }
-
-  const zipName = safeName(`dfin_documents_${Date.now()}.zip`);
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
-  // allow client to read the filename
-  res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
-
-  const archive = archiver("zip", { zlib: { level: 9 } });
-  archive.on("error", (err) => {
-    console.error("ZIP error:", err.message);
-    try { res.status(500); } catch {}
-    res.end();
-  });
-  archive.pipe(res);
-
-  for (const item of body) {
-    const { cusip, doctype, filenamePrefix, ticker } = item || {};
-    if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
-      archive.append(`Invalid item: require { cusip, doctype[] }\n`, {
-        name: `INVALID_ITEM_${Date.now()}.txt`,
-      });
-      continue;
+    const body = req.body;
+    if (!Array.isArray(body) || body.length === 0) {
+        return res.status(400).json({
+            ok: false,
+            error:
+                "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix? }",
+        });
     }
 
-    // <<< Folder by TICKER (fallback to CUSIP if missing) >>>
-    const folder = safeName(ticker || cusip);
+    const zipName = safeName(`dfin_documents_${Date.now()}.zip`);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
 
-    for (const dt of doctype) {
-      try {
-        const upstream = await fetchDfinDocStream(cusip, dt);
-        if (upstream.status !== 200) {
-          archive.append(
-            `Failed to fetch ${cusip}/${dt} (status ${upstream.status})\n`,
-            { name: `${folder}/${(ticker || cusip)}_${dt}_ERROR.txt` }
-          );
-          continue;
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => {
+        console.error("ZIP error:", err.message);
+        try {
+            res.status(500);
+        } catch (_) {}
+        res.end();
+    });
+    archive.pipe(res);
+
+    // Process sequentially to keep memory modest and ordering stable
+    for (const item of body) {
+        const { cusip, doctype, filenamePrefix } = item || {};
+        if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
+            archive.append(`Invalid item: require { cusip, doctype[] }\n`, {
+                name: `INVALID_ITEM_${Date.now()}.txt`,
+            });
+            continue;
         }
 
-        // Filename: <optionalPrefix_><tickerOrCusip>_<doctype>.pdf
-        const stem =
-          (filenamePrefix ? safeName(filenamePrefix) + "_" : "") +
-          safeName(ticker || cusip) +
-          `_${dt}`;
+        const folder = safeName(cusip);
+        for (const dt of doctype) {
+            try {
+                const upstream = await fetchDfinDocStream(cusip, dt);
+                if (upstream.status !== 200) {
+                    archive.append(
+                        `Failed to fetch ${cusip}/${dt} (status ${upstream.status})\n`,
+                        { name: `${folder}/${cusip}_${dt}_ERROR.txt` }
+                    );
+                    continue;
+                }
 
-        archive.append(upstream.data, { name: `${folder}/${stem}.pdf` });
-      } catch (e) {
-        archive.append(
-          `Exception for ${cusip}/${dt}: ${e?.message || "unknown"}\n`,
-          { name: `${folder}/${(ticker || cusip)}_${dt}_EXCEPTION.txt` }
-        );
-      }
+                const base = `${
+                    filenamePrefix ? safeName(filenamePrefix) + "_" : ""
+                }${cusip}_${dt}.pdf`;
+                archive.append(upstream.data, { name: `${folder}/${base}` });
+            } catch (e) {
+                archive.append(
+                    `Exception for ${cusip}/${dt}: ${e?.message || "unknown"}\n`,
+                    { name: `${folder}/${cusip}_${dt}_EXCEPTION.txt` }
+                );
+            }
+        }
     }
-  }
 
-  archive.finalize();
+    archive.finalize();
 });
 
 
