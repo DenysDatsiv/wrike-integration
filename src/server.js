@@ -47,7 +47,7 @@ const ITEMS = [
     { id: '30', title: 'DeskMate Pro', summary: 'Adjustable standing desk converter.', link: 'https://example.com/pr10', type: 'product' },
 ];
 
-// ---- helpers ----
+/* -------------------- Helpers -------------------- */
 function parseQuery(q) {
     const allowedTypes = new Set(['article', 'person', 'product']);
 
@@ -60,34 +60,100 @@ function parseQuery(q) {
         if (!types.length) types = null;
     }
 
-    const query = (q.q ?? '').toString().trim().toLowerCase(); // <-- search text
-    const size  = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
-    const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
-
-    return { types, query, size, page };
+    const query = (q.q ?? '').toString().trim();
+    const fuzz = clamp(parseFloat(q.fuzz ?? '0.6'), 0, 1); // similarity threshold
+    const size = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    return { types, query, fuzz, size, page };
 }
 
-function makeMatcher(query) {
-    if (!query) return () => true;
-    const terms = query.split(/\s+/).filter(Boolean); // AND all words
+function clamp(n, min, max) { return Math.max(min, Math.min(max, isNaN(n) ? min : n)); }
+
+function normalize(s) {
+    return s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function tokenizeWords(s) {
+    return normalize(s).split(/[^a-z0-9]+/i).filter(Boolean);
+}
+
+function trigrams(s) {
+    const t = normalize(s);
+    if (t.length < 3) return [t]; // short-circuit for tiny tokens
+    const grams = [];
+    for (let i = 0; i < t.length - 2; i++) grams.push(t.slice(i, i + 3));
+    return grams;
+}
+
+function diceCoeff(aStr, bStr) {
+    const a = trigrams(aStr);
+    const b = trigrams(bStr);
+    if (!a.length || !b.length) return 0;
+    const freq = new Map();
+    for (const g of a) freq.set(g, (freq.get(g) || 0) + 1);
+    let inter = 0;
+    for (const g of b) {
+        const n = freq.get(g);
+        if (n > 0) {
+            inter++;
+            freq.set(g, n - 1);
+        }
+    }
+    // Dice: 2|A∩B| / (|A|+|B|)
+    return (2 * inter) / (a.length + b.length);
+}
+
+function levDistance(a, b) {
+    a = normalize(a); b = normalize(b);
+    const m = a.length, n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const dp = new Array(n + 1);
+    for (let j = 0; j <= n; j++) dp[j] = j;
+    for (let i = 1; i <= m; i++) {
+        let prev = dp[0];
+        dp[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const temp = dp[j];
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+            prev = temp;
+        }
+    }
+    return dp[n];
+}
+
+function fuzzyWordMatch(term, word, fuzz) {
+    // Handle super short terms with tiny edit distance
+    if (term.length <= 2) {
+        const d = levDistance(term, word);
+        return d <= 1; // allow one edit
+    }
+    // Otherwise, compare term vs word with trigram Dice
+    return diceCoeff(term, word) >= fuzz;
+}
+
+function makeFuzzyMatcher(query, fuzz) {
+    const terms = query ? tokenizeWords(query) : [];
+    if (!terms.length) return () => true; // no query => allow all
+
     return (item) => {
-        const hay = `${item.title} ${item.summary}`.toLowerCase();
-        return terms.every(t => hay.includes(t));
+        const hayWords = tokenizeWords(`${item.title} ${item.summary}`);
+        // every term must match at least one word in hayWords
+        return terms.every(term =>
+            hayWords.some(word => fuzzyWordMatch(term, word, fuzz))
+        );
     };
 }
 
-// GET /api/items?type=article,person&size=5&page=2&q=python tips
+/* -------------------- Route -------------------- */
+// GET /api/items?type=article,person&size=5&page=2&q=node paterns&fuzz=0.55
 app.get('/api/items', (req, res) => {
-    const { types, query, size, page } = parseQuery(req.query);
-
-    const match = makeMatcher(query);
+    const { types, query, fuzz, size, page } = parseQuery(req.query);
+    const match = makeFuzzyMatcher(query, fuzz);
 
     let data = ITEMS;
-
-    // filter by type(s) if provided
     if (types) data = data.filter(i => types.includes(i.type));
-
-    // filter by query (title+summary)
     if (query) data = data.filter(match);
 
     const total = data.length;
@@ -101,7 +167,9 @@ app.get('/api/items', (req, res) => {
             page,
             size,
             hasNext: start + size < total,
-            hasPrev: page > 1
+            hasPrev: page > 1,
+            query,
+            fuzz
         },
     });
 });
