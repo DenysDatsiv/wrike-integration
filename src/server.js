@@ -1,11 +1,13 @@
+// server.js
 const express = require('express');
-const cors = require('cors');
+const cors = require(`cors`);
 const helmet = require('helmet');
 
 const app = express();
 app.use(helmet());
 app.use(cors());
 
+/* -------------------- Data -------------------- */
 const ITEMS = [
     { id: '1',  title: 'Intro to Web Security', summary: 'Best practices for securing web apps.', link: 'https://example.com/a1',  type: 'article' },
     { id: '2',  title: 'Ada Lovelace', summary: 'Pioneer of computing.', link: 'https://example.com/p1',  type: 'person' },
@@ -47,26 +49,49 @@ const ITEMS = [
     { id: '30', title: 'DeskMate Pro', summary: 'Adjustable standing desk converter.', link: 'https://example.com/pr10', type: 'product' },
 ];
 
+const PDFS = [
+    { id: 'p1',  title: 'Annual Report 2024',        summary: 'Company performance and outlook.', link: 'https://example.com/reports/annual-2024.pdf',  type: 'pdf' },
+    { id: 'p2',  title: 'Kubernetes Cheatsheet',     summary: 'Commands and objects quick reference.', link: 'https://example.com/pdfs/k8s-cheatsheet.pdf', type: 'pdf' },
+    { id: 'p3',  title: 'Node.js Best Practices',    summary: 'Patterns for scalable Node apps.', link: 'https://example.com/pdfs/node-best-practices.pdf', type: 'pdf' },
+    { id: 'p4',  title: 'Intro to Prometheus',       summary: 'Metrics and alerting fundamentals.', link: 'https://example.com/pdfs/prometheus-intro.pdf', type: 'pdf' },
+    { id: 'p5',  title: 'Grafana Dashboards Guide',  summary: 'Panels, variables, and templating.', link: 'https://example.com/pdfs/grafana-dashboards.pdf', type: 'pdf' },
+    { id: 'p6',  title: 'Loki Log Pipeline',         summary: 'Ingest and query logs with Loki.', link: 'https://example.com/pdfs/loki-pipeline.pdf', type: 'pdf' },
+    { id: 'p7',  title: 'Web Security Checklist',    summary: 'OWASP-style secure-by-default list.', link: 'https://example.com/pdfs/web-sec-checklist.pdf', type: 'pdf' },
+    { id: 'p8',  title: 'TypeScript Handbook',       summary: 'Types, generics, narrowing, tips.', link: 'https://example.com/pdfs/typescript-handbook.pdf', type: 'pdf' },
+    { id: 'p9',  title: 'API Design Whitepaper',     summary: 'REST constraints and pitfalls.', link: 'https://example.com/pdfs/api-design-whitepaper.pdf', type: 'pdf' },
+    { id: 'p10', title: 'CI/CD with GitHub Actions', summary: 'Workflows, caching, matrix builds.', link: 'https://example.com/pdfs/gha-cicd.pdf', type: 'pdf' },
+    { id: 'p11', title: 'Docker Fundamentals',       summary: 'Images, containers, Compose.', link: 'https://example.com/pdfs/docker-fundamentals.pdf', type: 'pdf' },
+    { id: 'p12', title: 'PostgreSQL Tuning',         summary: 'Indexes, query plans, vacuuming.', link: 'https://example.com/pdfs/pgsql-tuning.pdf', type: 'pdf' },
+    { id: 'p13', title: 'Async JS Patterns',         summary: 'Promises, streams, backpressure.', link: 'https://example.com/pdfs/async-js-patterns.pdf', type: 'pdf' },
+    { id: 'p14', title: 'Cloud Cost Optimization',   summary: 'Tagging, rightsizing, autoscaling.', link: 'https://example.com/pdfs/cloud-costs.pdf', type: 'pdf' },
+    { id: 'p15', title: 'Accessibility (WCAG) Guide',summary: 'Roles, ARIA, keyboard nav.', link: 'https://example.com/pdfs/a11y-wcag.pdf', type: 'pdf' },
+    { id: 'p16', title: 'SRE Playbook',              summary: 'SLIs, SLOs, error budgets.', link: 'https://example.com/pdfs/sre-playbook.pdf', type: 'pdf' },
+    { id: 'p17', title: 'Caching Strategies',        summary: 'CDN, ETags, stale-while-revalidate.', link: 'https://example.com/pdfs/caching-strategies.pdf', type: 'pdf' },
+    { id: 'p18', title: 'Testing Pyramid',           summary: 'Unit, integration, E2E balance.', link: 'https://example.com/pdfs/testing-pyramid.pdf', type: 'pdf' },
+    { id: 'p19', title: 'OAuth2 & OIDC',             summary: 'Flows, tokens, PKCE.', link: 'https://example.com/pdfs/oauth-oidc.pdf', type: 'pdf' },
+    { id: 'p20', title: 'Event-Driven Architectures',summary: 'Queues, topics, idempotency.', link: 'https://example.com/pdfs/eda-basics.pdf', type: 'pdf' },
+];
+
 /* -------------------- Helpers -------------------- */
-function parseQuery(q) {
-    const allowedTypes = new Set(['article', 'person', 'product']);
+function parseQueryWithTypes(q, allowedTypes) {
+    const allowed = new Set(allowedTypes);
 
     let types = null;
     if (q.type) {
         types = String(q.type)
             .split(',')
             .map(s => s.trim().toLowerCase())
-            .filter(t => allowedTypes.has(t));
+            .filter(t => allowed.has(t));
         if (!types.length) types = null;
     }
 
-    const query = (q.q ?? '').toString().trim(); // no fuzz param, always fuzzy
+    const query = (q.q ?? '').toString().trim();
     const size  = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
     const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
     return { types, query, size, page };
 }
 
-// basic normalization/tokenization
+// normalization / tokenization
 function normalize(s) {
     return s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -74,8 +99,8 @@ function tokenizeWords(s) {
     return normalize(s).split(/[^a-z0-9]+/i).filter(Boolean);
 }
 
-// trigram dice + tiny edit-distance for short terms
-const DEFAULT_FUZZ = 0.6; // fixed threshold
+// trigram dice + tiny edit distance for short terms
+const DEFAULT_FUZZ = 0.6;
 function trigrams(s) {
     const t = normalize(s);
     if (t.length < 3) return [t];
@@ -116,30 +141,24 @@ function levDistance(a, b) {
     return dp[n];
 }
 function fuzzyWordMatch(term, word) {
-    // Short tokens (<=2 chars) – allow one edit
-    if (term.length <= 2) return levDistance(term, word) <= 1;
-    // Fast path: exact/substring hit
+    if (term.length <= 2) return levDistance(term, word) <= 1; // short tokens
     const t = normalize(term), w = normalize(word);
-    if (w.includes(t)) return true;
-    // Fuzzy via trigram dice
-    return diceCoeff(term, word) >= DEFAULT_FUZZ;
+    if (w.includes(t)) return true;                            // fast path
+    return diceCoeff(term, word) >= DEFAULT_FUZZ;              // fuzzy
 }
-
 function makeFuzzyMatcher(query) {
     const terms = query ? tokenizeWords(query) : [];
-    if (!terms.length) return () => true; // no query => allow all
-
+    if (!terms.length) return () => true;
     return (item) => {
         const hayWords = tokenizeWords(`${item.title} ${item.summary}`);
-        // every term must match at least one word
         return terms.every(term => hayWords.some(word => fuzzyWordMatch(term, word)));
     };
 }
 
-/* -------------------- Route -------------------- */
+/* -------------------- Routes -------------------- */
 // GET /api/items?type=article,person&size=5&page=2&q=node paterns
 app.get('/api/items', (req, res) => {
-    const { types, query, size, page } = parseQuery(req.query);
+    const { types, query, size, page } = parseQueryWithTypes(req.query, ['article', 'person', 'product']);
     const match = makeFuzzyMatcher(query);
 
     let data = ITEMS;
@@ -152,16 +171,30 @@ app.get('/api/items', (req, res) => {
 
     res.json({
         data: slice,
-        meta: {
-            total,
-            page,
-            size,
-            hasNext: start + size < total,
-            hasPrev: page > 1,
-            query
-        },
+        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1, query },
     });
 });
 
+// GET /api/pdfs?type=pdf&size=5&page=2&q=security guide
+app.get('/api/pdfs', (req, res) => {
+    const { types, query, size, page } = parseQueryWithTypes(req.query, ['pdf']);
+    const match = makeFuzzyMatcher(query);
+
+    let data = PDFS;
+    if (types) data = data.filter(i => types.includes(i.type)); // practically only 'pdf'
+    if (query) data = data.filter(match);
+
+    const total = data.length;
+    const start = (page - 1) * size;
+    const slice = data.slice(start, start + size);
+
+    res.json({
+        data: slice,
+        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1, query },
+    });
+});
+
+/* -------------------- Start -------------------- */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API listening on http://localhost:${PORT}`));
+
