@@ -60,31 +60,29 @@ function parseQuery(q) {
         if (!types.length) types = null;
     }
 
-    const query = (q.q ?? '').toString().trim();
-    const fuzz = clamp(parseFloat(q.fuzz ?? '0.6'), 0, 1); // similarity threshold
-    const size = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
-    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
-    return { types, query, fuzz, size, page };
+    const query = (q.q ?? '').toString().trim(); // no fuzz param, always fuzzy
+    const size  = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
+    const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    return { types, query, size, page };
 }
 
-function clamp(n, min, max) { return Math.max(min, Math.min(max, isNaN(n) ? min : n)); }
-
+// basic normalization/tokenization
 function normalize(s) {
     return s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 }
-
 function tokenizeWords(s) {
     return normalize(s).split(/[^a-z0-9]+/i).filter(Boolean);
 }
 
+// trigram dice + tiny edit-distance for short terms
+const DEFAULT_FUZZ = 0.6; // fixed threshold
 function trigrams(s) {
     const t = normalize(s);
-    if (t.length < 3) return [t]; // short-circuit for tiny tokens
+    if (t.length < 3) return [t];
     const grams = [];
     for (let i = 0; i < t.length - 2; i++) grams.push(t.slice(i, i + 3));
     return grams;
 }
-
 function diceCoeff(aStr, bStr) {
     const a = trigrams(aStr);
     const b = trigrams(bStr);
@@ -94,15 +92,10 @@ function diceCoeff(aStr, bStr) {
     let inter = 0;
     for (const g of b) {
         const n = freq.get(g);
-        if (n > 0) {
-            inter++;
-            freq.set(g, n - 1);
-        }
+        if (n > 0) { inter++; freq.set(g, n - 1); }
     }
-    // Dice: 2|A∩B| / (|A|+|B|)
     return (2 * inter) / (a.length + b.length);
 }
-
 function levDistance(a, b) {
     a = normalize(a); b = normalize(b);
     const m = a.length, n = b.length;
@@ -122,35 +115,32 @@ function levDistance(a, b) {
     }
     return dp[n];
 }
-
-function fuzzyWordMatch(term, word, fuzz) {
-    // Handle super short terms with tiny edit distance
-    if (term.length <= 2) {
-        const d = levDistance(term, word);
-        return d <= 1; // allow one edit
-    }
-    // Otherwise, compare term vs word with trigram Dice
-    return diceCoeff(term, word) >= fuzz;
+function fuzzyWordMatch(term, word) {
+    // Short tokens (<=2 chars) – allow one edit
+    if (term.length <= 2) return levDistance(term, word) <= 1;
+    // Fast path: exact/substring hit
+    const t = normalize(term), w = normalize(word);
+    if (w.includes(t)) return true;
+    // Fuzzy via trigram dice
+    return diceCoeff(term, word) >= DEFAULT_FUZZ;
 }
 
-function makeFuzzyMatcher(query, fuzz) {
+function makeFuzzyMatcher(query) {
     const terms = query ? tokenizeWords(query) : [];
     if (!terms.length) return () => true; // no query => allow all
 
     return (item) => {
         const hayWords = tokenizeWords(`${item.title} ${item.summary}`);
-        // every term must match at least one word in hayWords
-        return terms.every(term =>
-            hayWords.some(word => fuzzyWordMatch(term, word, fuzz))
-        );
+        // every term must match at least one word
+        return terms.every(term => hayWords.some(word => fuzzyWordMatch(term, word)));
     };
 }
 
 /* -------------------- Route -------------------- */
-// GET /api/items?type=article,person&size=5&page=2&q=node paterns&fuzz=0.55
+// GET /api/items?type=article,person&size=5&page=2&q=node paterns
 app.get('/api/items', (req, res) => {
-    const { types, query, fuzz, size, page } = parseQuery(req.query);
-    const match = makeFuzzyMatcher(query, fuzz);
+    const { types, query, size, page } = parseQuery(req.query);
+    const match = makeFuzzyMatcher(query);
 
     let data = ITEMS;
     if (types) data = data.filter(i => types.includes(i.type));
@@ -168,8 +158,7 @@ app.get('/api/items', (req, res) => {
             size,
             hasNext: start + size < total,
             hasPrev: page > 1,
-            query,
-            fuzz
+            query
         },
     });
 });
