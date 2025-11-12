@@ -58,7 +58,7 @@ const PDFS = [
     { id: 'p6',  title: 'Loki Log Pipeline',         summary: 'Ingest and query logs with Loki.', link: 'https://example.com/pdfs/loki-pipeline.pdf', type: 'pdf' },
     { id: 'p7',  title: 'Web Security Checklist',    summary: 'OWASP-style secure-by-default list.', link: 'https://example.com/pdfs/web-sec-checklist.pdf', type: 'pdf' },
     { id: 'p8',  title: 'TypeScript Handbook',       summary: 'Types, generics, narrowing, tips.', link: 'https://example.com/pdfs/typescript-handbook.pdf', type: 'pdf' },
-    { id: 'p9',  title: 'API Design Whitepaper',     summary: 'REST constraints and pitfalls.', link: 'https://example.com/pdfs/api-design-whitepaper.pdf', type: 'pdf' },
+    { id: 'p9',  title: 'CSS Layout Deep Dive Denys PDF TEST',     summary: 'REST constraints and pitfalls.', link: 'https://example.com/pdfs/api-design-whitepaper.pdf', type: 'pdf' },
     { id: 'p10', title: 'CI/CD with GitHub Actions', summary: 'Workflows, caching, matrix builds.', link: 'https://example.com/pdfs/gha-cicd.pdf', type: 'pdf' },
     { id: 'p11', title: 'Docker Fundamentals',       summary: 'Images, containers, Compose.', link: 'https://example.com/pdfs/docker-fundamentals.pdf', type: 'pdf' },
     { id: 'p12', title: 'PostgreSQL Tuning',         summary: 'Indexes, query plans, vacuuming.', link: 'https://example.com/pdfs/pgsql-tuning.pdf', type: 'pdf' },
