@@ -47,9 +47,10 @@ const ITEMS = [
     { id: '30', title: 'DeskMate Pro', summary: 'Adjustable standing desk converter.', link: 'https://example.com/pr10', type: 'product' },
 ];
 
-
+// ---- helpers ----
 function parseQuery(q) {
     const allowedTypes = new Set(['article', 'person', 'product']);
+
     let types = null;
     if (q.type) {
         types = String(q.type)
@@ -58,17 +59,36 @@ function parseQuery(q) {
             .filter(t => allowedTypes.has(t));
         if (!types.length) types = null;
     }
-    const size = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
-    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
-    return { types, size, page };
+
+    const query = (q.q ?? '').toString().trim().toLowerCase(); // <-- search text
+    const size  = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
+    const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+
+    return { types, query, size, page };
 }
 
-// GET /api/items?type=article,person&size=5&page=2
+function makeMatcher(query) {
+    if (!query) return () => true;
+    const terms = query.split(/\s+/).filter(Boolean); // AND all words
+    return (item) => {
+        const hay = `${item.title} ${item.summary}`.toLowerCase();
+        return terms.every(t => hay.includes(t));
+    };
+}
+
+// GET /api/items?type=article,person&size=5&page=2&q=python tips
 app.get('/api/items', (req, res) => {
-    const { types, size, page } = parseQuery(req.query);
+    const { types, query, size, page } = parseQuery(req.query);
+
+    const match = makeMatcher(query);
 
     let data = ITEMS;
+
+    // filter by type(s) if provided
     if (types) data = data.filter(i => types.includes(i.type));
+
+    // filter by query (title+summary)
+    if (query) data = data.filter(match);
 
     const total = data.length;
     const start = (page - 1) * size;
@@ -76,7 +96,13 @@ app.get('/api/items', (req, res) => {
 
     res.json({
         data: slice,
-        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1 },
+        meta: {
+            total,
+            page,
+            size,
+            hasNext: start + size < total,
+            hasPrev: page > 1
+        },
     });
 });
 
