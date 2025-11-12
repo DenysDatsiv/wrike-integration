@@ -1,534 +1,84 @@
-// // src/server.js
-// const express = require('express');
-// const cors = require('cors');
-// const dotenv = require('dotenv');
-// const crypto = require('crypto');
-//
-// dotenv.config();
-//
-// /** === Імпорт роутерів та утиліт (підлаштуй шляхи під свій проєкт) === */
-// const dotcmsRouter = require('./routes/dotcmsRouter');
-// const backendRouter = require('./routes/backendRouter');
-// const wrikeRoutes = require('./routes/wrikeRoutes');
-// const { ensureWebhookRegistered } = require('./shared/utils/wrike-webhook/webhooks.util');
-// const {
-//     makeDedupeKey,
-//     logEvent,
-//     getCustomFieldValueById,
-//     normalizeExtracted,
-//     extractWrikeTaskId,
-//     isCommand,
-//     stripHtml,
-//     hashObject, toPlainError
-// } = require("./shared/utils/wrike-webhook/helpers.util");
-// const {createSlug, sleep} = require("./shared/utils/wrike-webhook/common.util");
-// const {MSG} = require("./shared/constants/wrike-webhook/answers.constant");
-// const {validateRequired, buildValidationComment} = require("./validations/wrike.validation");
-// const {wrikeApiClient, dotcmsApiClient} = require("./configurations/httpClients");
-// const {wrike} = require("./configurations/env.variables");
-// const {handleWrikeWebhook} = require("./controllers/wrike/wrike-webhook.controller");
-// // const { startLocalTunnel } = require('./shared/utils/wrike-webhook/localtunnel.util'); // опційно
-//
-// /** === ENV === */
-// const {
-//     PORT = 3000,
-//     LT_ENABLE,
-//     PUBLIC_BASE_URL,
-//     WEBHOOK_SECRET,
-// } = process.env;
-//
-// /** === App === */
-// const app = express();
-// app.use(cors());
-// app.set('trust proxy', true);
-//
-// // ПІСЛЯ:
-// app.post(
-//     '/wrike/webhook',
-//     express.raw({ type: '*/*', limit: '5mb' }), // ⬅️ важливо: raw тільки тут
-//     handleWrikeWebhook
-// );
-//
-// // Далі глобальні парсери як було:
-// app.use((req, res, next) => {
-//     return express.json({ limit: '50mb', strict: false })(req, res, next);
-// });
-//
-// /** === Healthcheck === */
-// app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
-//
-// /** === Роути === */
-// app.use('/dotcms', dotcmsRouter);
-// app.use('/back-end', backendRouter);
-// app.use('/wrike', wrikeRoutes);
-//
-// /** === 404 для інших === */
-// app.use((req, res) => {
-//     res.status(404).json({ message: 'Not found' });
-// });
-//
-// /** === Глобальний error handler (за бажанням) === */
-// app.use((err, _req, res, _next) => {
-//     console.error('Unhandled error:', err);
-//     res.status(500).json({ message: 'Internal error', details: err?.message || err });
-// });
-//
-// /** === Старт сервера + реєстрація вебхука === */
-// app.listen(PORT, async () => {
-//     console.log(`✅ Server on http://localhost:${PORT}`);
-//     const publicBaseUrl = (PUBLIC_BASE_URL || '').replace(/\/$/, '');
-//     console.log(`Public base (env): ${publicBaseUrl || '(not set)'}`);
-//     try {
-//         await ensureWebhookRegistered(publicBaseUrl);
-//         // Якщо ensureWebhookRegistered логерує — ок; інакше можеш тут вивести "Webhook ensured".
-//     } catch (e) {
-//         console.warn('⚠️ Failed to register webhook:', e?.response?.data || e?.message || e);
-//     }
-// });
-// server.js
-// server.js
-const express = require("express");
-const cors = require("cors");
-const { HttpsProxyAgent } = require("https-proxy-agent");
-const { HttpProxyAgent } = require("http-proxy-agent");
-const axios = require("axios");
-const { pipeline } = require("stream");
-const { URL } = require("url");
-const swaggerUi = require("swagger-ui-express");
-const swaggerJsdoc = require("swagger-jsdoc");
-const archiver = require("archiver");
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(helmet());
+app.use(cors());
 
-/* =========================
-   CONFIG
-========================= */
-const SUBSCRIPTION_KEY =
-    process.env.DFIN_SUBSCRIPTION_KEY ||
-    "9fb1445aa3e8420a8837a541b3f16786"; // <-- override in prod
+const ITEMS = [
+    { id: '1',  title: 'Intro to Web Security', summary: 'Best practices for securing web apps.', link: 'https://example.com/a1',  type: 'article' },
+    { id: '2',  title: 'Ada Lovelace', summary: 'Pioneer of computing.', link: 'https://example.com/p1',  type: 'person' },
+    { id: '3',  title: 'SuperWidget 3000', summary: 'A versatile productivity gadget.', link: 'https://example.com/pr1', type: 'product' },
+    { id: '4',  title: 'Advanced Node.js Patterns', summary: 'Scalable patterns for Node apps.', link: 'https://example.com/a2', type: 'article' },
+    { id: '5',  title: 'Grace Hopper', summary: 'COBOL and compiler pioneer.', link: 'https://example.com/p2', type: 'person' },
+    { id: '6',  title: 'HyperPhone X', summary: 'A flagship smartphone.', link: 'https://example.com/pr2', type: 'product' },
 
-// Single funds endpoint (GLT site variant)
-const FUNDS_URL =
-    "https://services.dfinsolutions.com/EntityService/entities/customers/usrbcgam/sites/Funds/GLT";
+    { id: '7',  title: 'Designing RESTful APIs', summary: 'Principles and pitfalls of REST.', link: 'https://example.com/a3', type: 'article' },
+    { id: '8',  title: 'Alan Turing', summary: 'Father of theoretical computer science and AI.', link: 'https://example.com/p3', type: 'person' },
+    { id: '9',  title: 'EcoBottle Pro', summary: 'Reusable insulated bottle.', link: 'https://example.com/pr3', type: 'product' },
 
-// Document service base
-const DOC_BASE =
-    "https://services.dfinsolutions.com/documentservice/documents";
+    { id: '10', title: 'CSS Layout Deep Dive', summary: 'Grid, Flexbox, and modern layout patterns.', link: 'https://example.com/a4', type: 'article' },
+    { id: '11', title: 'Katherine Johnson', summary: 'NASA mathematician who broke barriers.', link: 'https://example.com/p4', type: 'person' },
+    { id: '12', title: 'SmartLamp Mini', summary: 'Portable lamp with ambient sensor.', link: 'https://example.com/pr4', type: 'product' },
 
-// Optional outbound proxies
-const httpsAgent = process.env.HTTPS_PROXY
-    ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
-    : undefined;
-const httpAgent = process.env.HTTP_PROXY
-    ? new HttpProxyAgent(process.env.HTTP_PROXY)
-    : undefined;
+    { id: '13', title: 'Effective Code Reviews', summary: 'How to review code with empathy and rigor.', link: 'https://example.com/a5', type: 'article' },
+    { id: '14', title: 'Linus Torvalds', summary: 'Creator of Linux kernel and Git.', link: 'https://example.com/p5', type: 'person' },
+    { id: '15', title: 'NoiseCancel Buds', summary: 'Wireless earbuds with ANC.', link: 'https://example.com/pr5', type: 'product' },
 
-/* =========================
-   MIDDLEWARE
-========================= */
-app.use(express.json());
-app.use(cors()); 
+    { id: '16', title: 'PostgreSQL Indexing 101', summary: 'Types of indexes and when to use them.', link: 'https://example.com/a6', type: 'article' },
+    { id: '17', title: 'Margaret Hamilton', summary: 'Led Apollo flight software team.', link: 'https://example.com/p6', type: 'person' },
+    { id: '18', title: 'TravelPack 40L', summary: 'Carry-on friendly modular backpack.', link: 'https://example.com/pr6', type: 'product' },
 
-/* =========================
-   SWAGGER (OpenAPI)
-========================= */
-const swaggerOptions = {
-    definition: {
-        openapi: "3.0.0",
-        info: {
-            title: "DFIN Proxy API",
-            version: "1.2.0",
-            description:
-                "Proxy API for DFIN services (funds, documents) with health check and batch utilities.",
-        },
-        servers: [{ url: `http://localhost:${PORT}` }],
-        components: {
-            schemas: {
-                BatchArrayItem: {
-                    type: "object",
-                    required: ["cusip", "doctype"],
-                    properties: {
-                        cusip: { type: "string", example: "74933U753" },
-                        doctype: {
-                            type: "array",
-                            items: { type: "string", example: "P" },
-                        },
-                        filenamePrefix: {
-                            type: "string",
-                            example: "RBC_Fund",
-                        },
-                    },
-                },
-                BatchLinksResultItem: {
-                    type: "object",
-                    properties: {
-                        index: { type: "integer" },
-                        ok: { type: "boolean" },
-                        cusip: { type: "string" },
-                        error: { type: "string", nullable: true },
-                        items: {
-                            type: "array",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    doctype: { type: "string" },
-                                    url: { type: "string" },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    },
-    apis: [__filename],
-};
-const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    { id: '19', title: 'Intro to Kubernetes', summary: 'Pods, services, and deployments explained.', link: 'https://example.com/a7', type: 'article' },
+    { id: '20', title: 'Tim Berners-Lee', summary: 'Inventor of the World Wide Web.', link: 'https://example.com/p7', type: 'person' },
+    { id: '21', title: 'HomeHub Router', summary: 'Wi-Fi 6 router with parental controls.', link: 'https://example.com/pr7', type: 'product' },
 
-/* =========================
-   HELPERS
-========================= */
-// Rewrites source document URLs to local proxy URLs
-function rewriteDocumentUrls(apiData, origin) {
-    const tryRewrite = (doc) => {
-        try {
-            const u = new URL(doc.url);
-            const parts = u.pathname.split("/").filter(Boolean);
-            const idx = parts.findIndex((p) => p === "documents");
-            const cusip = parts[idx + 2];
-            const doctype = parts[idx + 4];
-            if (cusip && doctype) {
-                doc.url = `${origin}/api/dfin/documents/cusip/${encodeURIComponent(
-                    cusip
-                )}/doctype/${encodeURIComponent(doctype)}`;
-            }
-        } catch (_) {}
-    };
+    { id: '22', title: 'Observability Basics', summary: 'Logs, metrics, and traces for modern apps.', link: 'https://example.com/a8', type: 'article' },
+    { id: '23', title: 'Radia Perlman', summary: 'Mother of the Internet—Spanning Tree Protocol.', link: 'https://example.com/p8', type: 'person' },
+    { id: '24', title: 'ErgoKey MK-II', summary: 'Split mechanical keyboard.', link: 'https://example.com/pr8', type: 'product' },
 
-    for (const tg of apiData || []) {
-        for (const sg of tg.groups || []) {
-            for (const fund of sg.funds || []) {
-                for (const sc of fund.shareClasses || []) {
-                    for (const doc of sc.documents || []) {
-                        tryRewrite(doc);
-                    }
-                }
-            }
-        }
+    { id: '25', title: 'Async JS Patterns', summary: 'Promises, async/await, and streams.', link: 'https://example.com/a9', type: 'article' },
+    { id: '26', title: 'Guido van Rossum', summary: 'Creator of Python.', link: 'https://example.com/p9', type: 'person' },
+    { id: '27', title: 'CleanWater Filter', summary: 'Sink-mounted water filter replacement.', link: 'https://example.com/pr9', type: 'product' },
+
+    { id: '28', title: 'TypeScript Tips', summary: 'Types, generics, and narrowing tricks.', link: 'https://example.com/a10', type: 'article' },
+    { id: '29', title: 'Barbara Liskov', summary: 'LSP and contributions to programming languages.', link: 'https://example.com/p10', type: 'person' },
+    { id: '30', title: 'DeskMate Pro', summary: 'Adjustable standing desk converter.', link: 'https://example.com/pr10', type: 'product' },
+];
+
+
+function parseQuery(q) {
+    const allowedTypes = new Set(['article', 'person', 'product']);
+    let types = null;
+    if (q.type) {
+        types = String(q.type)
+            .split(',')
+            .map(s => s.trim().toLowerCase())
+            .filter(t => allowedTypes.has(t));
+        if (!types.length) types = null;
     }
-    return apiData;
+    const size = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    return { types, size, page };
 }
 
-const fetchDfinDocStream = async (cusip, doctype) => {
-    const targetUrl = `${DOC_BASE}/cusip/${encodeURIComponent(
-        cusip
-    )}/doctype/${encodeURIComponent(doctype)}`;
-    return axios.get(targetUrl, {
-        params: { "subscription-key": SUBSCRIPTION_KEY },
-        responseType: "stream",
-        proxy: false,
-        httpsAgent,
-        httpAgent,
-        timeout: 60000,
-        validateStatus: () => true,
+// GET /api/items?type=article,person&size=5&page=2
+app.get('/api/items', (req, res) => {
+    const { types, size, page } = parseQuery(req.query);
+
+    let data = ITEMS;
+    if (types) data = data.filter(i => types.includes(i.type));
+
+    const total = data.length;
+    const start = (page - 1) * size;
+    const slice = data.slice(start, start + size);
+
+    res.json({
+        data: slice,
+        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1 },
     });
-};
-
-const safeName = (s) =>
-    (s || "")
-        .replace(/[\r\n"]/g, "")
-        .replace(/[/\\?%*:|<>]/g, "-");
-
-/* =========================
-   ROUTES
-========================= */
-
-/**
- * @swagger
- * /api/funds:
- *   get:
- *     summary: Get funds data (GLT) with document URLs rewritten to local proxy
- *     responses:
- *       200:
- *         description: Funds payload with rewritten document URLs
- */
-app.get("/api/funds", async (req, res) => {
-    try {
-        const response = await axios.get(FUNDS_URL, {
-            params: { "subscription-key": SUBSCRIPTION_KEY },
-            proxy: false,
-            httpsAgent,
-            httpAgent,
-            timeout: 30000,
-        });
-
-        const origin =
-            process.env.PUBLIC_BASE_URL ||
-            `${req.protocol}://${req.get("host") || `localhost:${PORT}`}`;
-
-        const rewritten = rewriteDocumentUrls(response.data, origin);
-        res.json({ ok: true, data: rewritten });
-    } catch (err) {
-        console.error("[/api/funds] error:", err?.message);
-        res
-            .status(500)
-            .json({ ok: false, error: err?.message || "Request failed" });
-    }
 });
 
-/**
- * @swagger
- * /api/dfin/documents/cusip/{cusip}/doctype/{doctype}:
- *   get:
- *     summary: Proxy a single DFIN document by cusip and doctype (forces download)
- *     parameters:
- *       - in: path
- *         name: cusip
- *         required: true
- *         schema: { type: string }
- *       - in: path
- *         name: doctype
- *         required: true
- *         schema: { type: string }
- *       - in: query
- *         name: filename
- *         required: false
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: PDF stream
- */
-app.get(
-    "/api/dfin/documents/cusip/:cusip/doctype/:doctype",
-    async (req, res) => {
-        const { cusip, doctype } = req.params;
-        const requestedName = (req.query.filename || "").toString();
-        try {
-            const upstream = await fetchDfinDocStream(cusip, doctype);
-
-            res.status(upstream.status);
-            const ct = upstream.headers["content-type"] || "application/pdf";
-            res.setHeader("Content-Type", ct);
-
-            const fallbackName = `document_${cusip}_${doctype}.pdf`;
-            const finalName = safeName(requestedName) || fallbackName;
-
-            res.setHeader(
-                "Content-Disposition",
-                `attachment; filename="${finalName}"`
-            );
-
-            pipeline(upstream.data, res, (e) => {
-                if (e) console.error("Stream pipeline error:", e.message);
-            });
-        } catch (err) {
-            console.error("[/api/dfin/documents/*] error:", err?.message);
-            res
-                .status(500)
-                .json({ ok: false, error: err?.message || "Proxy failed" });
-        }
-    }
-);
-
-/**
- * @swagger
- * /api/dfin/documents/batch/links:
- *   post:
- *     summary: Return local proxy URLs for multiple items (root-level array)
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: array
- *             items: { $ref: "#/components/schemas/BatchArrayItem" }
- *           example:
- *             - cusip: "74933U753"
- *               doctype: ["P","SAR"]
- *               filenamePrefix: "RBC_Fund"
- *             - cusip: "74933U754"
- *               doctype: ["P"]
- *     responses:
- *       200:
- *         description: Per-item list of local proxy URLs
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 ok: { type: boolean }
- *                 results:
- *                   type: array
- *                   items: { $ref: "#/components/schemas/BatchLinksResultItem" }
- */
-app.post("/api/dfin/documents/batch/links", async (req, res) => {
-    const body = req.body;
-    if (!Array.isArray(body) || body.length === 0) {
-        return res.status(400).json({
-            ok: false,
-            error:
-                "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix? }",
-        });
-    }
-
-    const origin =
-        process.env.PUBLIC_BASE_URL ||
-        `${req.protocol}://${req.get("host") || `localhost:${PORT}`}`;
-
-    const results = [];
-
-    for (const [index, item] of body.entries()) {
-        const { cusip, doctype } = item || {};
-        if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
-            results.push({
-                index,
-                ok: false,
-                cusip: cusip || null,
-                error: "Invalid item: require { cusip, doctype: string[] }",
-            });
-            continue;
-        }
-
-        const items = doctype.map((dt) => ({
-            doctype: dt,
-            url: `${origin}/api/dfin/documents/cusip/${encodeURIComponent(
-                cusip
-            )}/doctype/${encodeURIComponent(dt)}`,
-        }));
-
-        results.push({ index, ok: true, cusip, items });
-    }
-
-    res.json({ ok: true, results });
-});
-
-/**
- * @swagger
- * /api/dfin/documents/batch/zip:
- *   post:
- *     summary: Download many items (root-level array) as a single ZIP
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: array
- *             items: { $ref: "#/components/schemas/BatchArrayItem" }
- *           example:
- *             - cusip: "74933U753"
- *               doctype: ["P","SAR"]
- *               filenamePrefix: "RBC_Fund"
- *             - cusip: "74933U754"
- *               doctype: ["P"]
- *     responses:
- *       200:
- *         description: ZIP stream containing PDFs. Errors included as *_ERROR.txt entries.
- */
-app.post("/api/dfin/documents/batch/zip", async (req, res) => {
-    const body = req.body;
-    if (!Array.isArray(body) || body.length === 0) {
-        return res.status(400).json({
-            ok: false,
-            error:
-                "Body must be a non-empty array of { cusip, doctype: string[], filenamePrefix? }",
-        });
-    }
-
-    const zipName = safeName(`dfin_documents_${Date.now()}.zip`);
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
-
-    const archive = archiver("zip", { zlib: { level: 9 } });
-    archive.on("error", (err) => {
-        console.error("ZIP error:", err.message);
-        try {
-            res.status(500);
-        } catch (_) {}
-        res.end();
-    });
-    archive.pipe(res);
-
-    // Process sequentially to keep memory modest and ordering stable
-    for (const item of body) {
-        const { cusip, doctype, filenamePrefix } = item || {};
-        if (!cusip || !Array.isArray(doctype) || doctype.length === 0) {
-            archive.append(`Invalid item: require { cusip, doctype[] }\n`, {
-                name: `INVALID_ITEM_${Date.now()}.txt`,
-            });
-            continue;
-        }
-
-        const folder = safeName(cusip);
-        for (const dt of doctype) {
-            try {
-                const upstream = await fetchDfinDocStream(cusip, dt);
-                if (upstream.status !== 200) {
-                    archive.append(
-                        `Failed to fetch ${cusip}/${dt} (status ${upstream.status})\n`,
-                        { name: `${folder}/${cusip}_${dt}_ERROR.txt` }
-                    );
-                    continue;
-                }
-
-                const base = `${
-                    filenamePrefix ? safeName(filenamePrefix) + "_" : ""
-                }${cusip}_${dt}.pdf`;
-                archive.append(upstream.data, { name: `${folder}/${base}` });
-            } catch (e) {
-                archive.append(
-                    `Exception for ${cusip}/${dt}: ${e?.message || "unknown"}\n`,
-                    { name: `${folder}/${cusip}_${dt}_EXCEPTION.txt` }
-                );
-            }
-        }
-    }
-
-    archive.finalize();
-});
-
-
-app.get("/api/health", async (req, res) => {
-    try {
-        const healthUrl =
-            "https://services.dfinsolutions.com/EntityService/entities/customers/usrbcgam/sites/Funds";
-        const response = await axios.get(healthUrl, {
-            params: { "subscription-key": SUBSCRIPTION_KEY },
-            proxy: false,
-            httpsAgent,
-            httpAgent,
-            timeout: 15000,
-            validateStatus: () => true,
-        });
-
-        if (response.status === 200 && response.data) {
-            res.json({
-                ok: true,
-                status: response.status,
-                message: "Subscription key is valid",
-            });
-        } else {
-            res.status(response.status).json({
-                ok: false,
-                status: response.status,
-                message: "Subscription key invalid or request failed",
-                details: response.data || null,
-            });
-        }
-    } catch (err) {
-        console.error("[/api/health] error:", err?.message);
-        res
-            .status(500)
-            .json({ ok: false, error: err?.message || "Health check failed" });
-    }
-});
-
-/* =========================
-   SERVER START
-========================= */
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📖 Swagger docs:      http://localhost:${PORT}/api/docs`);
-});
-
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`API listening on http://localhost:${PORT}`));
