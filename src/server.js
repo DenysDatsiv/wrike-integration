@@ -188,7 +188,7 @@ app.get('/api/pdfs', (req, res) => {
             hasNext,
             hasPrev,
             nextPage: hasNext ? page + 1 : null,
-            prevPage: hasPrev ? page - 1 : null,
+            prevPage: hasPrev ? page - 1 : null ,
             query,
         },
     });
