@@ -30,6 +30,7 @@ const ITEMS = Array.from({ length: 1200 }, (_, index) => {
         type,
     };
 });
+
 const PDFS = [
     { id: 'p1',  title: 'Annual Report 2024',        summary: 'Company performance and outlook.', link: 'https://example.com/reports/annual-2024.pdf',  type: 'pdf' },
     { id: 'p2',  title: 'Kubernetes Cheatsheet',     summary: 'Commands and objects quick reference.', link: 'https://example.com/pdfs/k8s-cheatsheet.pdf', type: 'pdf' },
@@ -66,10 +67,12 @@ function parseQueryWithTypes(q, allowedTypes) {
         if (!types.length) types = null;
     }
 
-    const query = (q.q ?? '').toString().trim();
-    const size  = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
-    const page  = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
-    return { types, query, size, page };
+    const query      = (q.q ?? '').toString().trim();
+    const size       = Math.max(1, Math.min(100, parseInt(q.size ?? '10', 10) || 10));
+    const page       = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    const searchType = (q.searchType ?? 'global').toString().toLowerCase();
+
+    return { types, query, size, page, searchType };
 }
 
 // normalization / tokenization
@@ -137,16 +140,40 @@ function makeFuzzyMatcher(query) {
 }
 
 /* -------------------- Routes -------------------- */
-// GET /api/items?type=article,person&size=20&page=1&q=css
-// Perfect for infinite scroll: just call with page = meta.nextPage while hasNext is true.
+
+// GET /api/items?type=article,person&size=20&page=1&q=css&searchType=global|modal
 app.get('/api/items', (req, res) => {
-    const { types, query, size, page } = parseQueryWithTypes(req.query, ['article', 'person', 'product']);
+    const { types, query, size, page, searchType } = parseQueryWithTypes(req.query, ['article', 'person', 'product']);
     const match = makeFuzzyMatcher(query);
 
     let data = ITEMS;
     if (types) data = data.filter(i => types.includes(i.type));
     if (query) data = data.filter(match);
 
+    // --- MODAL MODE: N per category (article/person/product) + totals ---
+    if (searchType === 'modal') {
+        const perCategory = size; // "size" means "how many per category" in modal mode
+        const categories = {};
+
+        ITEM_TYPES.forEach(type => {
+            const subset = data.filter(i => i.type === type);
+            categories[type] = {
+                data: subset.slice(0, perCategory),
+                meta: {
+                    total: subset.length,
+                    size: perCategory,
+                    query,
+                },
+            };
+        });
+
+        return res.json({
+            searchType: 'modal',
+            categories,
+        });
+    }
+
+    // --- GLOBAL MODE (default) – existing behaviour ---
     const total = data.length;
     const start = (page - 1) * size;
     const slice = data.slice(start, start + size);
@@ -169,15 +196,36 @@ app.get('/api/items', (req, res) => {
     });
 });
 
-// GET /api/pdfs?size=10&page=1&q=css
+// GET /api/pdfs?size=10&page=1&q=css&searchType=global|modal
 app.get('/api/pdfs', (req, res) => {
-    const { types, query, size, page } = parseQueryWithTypes(req.query, ['pdf']);
+    const { types, query, size, page, searchType } = parseQueryWithTypes(req.query, ['pdf']);
     const match = makeFuzzyMatcher(query);
 
     let data = PDFS;
     if (types) data = data.filter(i => types.includes(i.type)); // practically only 'pdf'
     if (query) data = data.filter(match);
 
+    // --- MODAL MODE: N per "category" (here, just pdf) + total ---
+    if (searchType === 'modal') {
+        const perCategory = size;
+        const subset = data;
+
+        return res.json({
+            searchType: 'modal',
+            categories: {
+                pdf: {
+                    data: subset.slice(0, perCategory),
+                    meta: {
+                        total: subset.length,
+                        size: perCategory,
+                        query,
+                    },
+                },
+            },
+        });
+    }
+
+    // --- GLOBAL MODE (default) – existing behaviour ---
     const total = data.length;
     const start = (page - 1) * size;
     const slice = data.slice(start, start + size);
@@ -194,7 +242,7 @@ app.get('/api/pdfs', (req, res) => {
             hasNext,
             hasPrev,
             nextPage: hasNext ? page + 1 : null,
-            prevPage: hasPrev ? page - 1 : null ,
+            prevPage: hasPrev ? page - 1 : null,
             query,
         },
     });
