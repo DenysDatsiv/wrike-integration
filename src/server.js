@@ -1,6 +1,6 @@
 // server.js
 const express = require('express');
-const cors = require(`cors`);
+const cors = require('cors');
 const helmet = require('helmet');
 
 const app = express();
@@ -8,46 +8,21 @@ app.use(helmet());
 app.use(cors());
 
 /* -------------------- Data -------------------- */
-const ITEMS = [
-    { id: '1',  title: 'Intro to Web Security', summary: 'Best practices for securing web apps.', link: 'https://example.com/a1',  type: 'article' },
-    { id: '2',  title: 'Ada Lovelace', summary: 'Pioneer of computing.', link: 'https://example.com/p1',  type: 'person' },
-    { id: '3',  title: 'SuperWidget 3000', summary: 'A versatile productivity gadget.', link: 'https://example.com/pr1', type: 'product' },
-    { id: '4',  title: 'Advanced Node.js Patterns', summary: 'Scalable patterns for Node apps.', link: 'https://example.com/a2', type: 'article' },
-    { id: '5',  title: 'Grace Hopper', summary: 'COBOL and compiler pioneer.', link: 'https://example.com/p2', type: 'person' },
-    { id: '6',  title: 'HyperPhone X', summary: 'A flagship smartphone.', link: 'https://example.com/pr2', type: 'product' },
+// Generate 1200 CSS-related items
+const ITEM_TYPES = ['article', 'person', 'product'];
 
-    { id: '7',  title: 'Designing RESTful APIs', summary: 'Principles and pitfalls of REST.', link: 'https://example.com/a3', type: 'article' },
-    { id: '8',  title: 'Alan Turing', summary: 'Father of theoretical computer science and AI.', link: 'https://example.com/p3', type: 'person' },
-    { id: '9',  title: 'EcoBottle Pro', summary: 'Reusable insulated bottle.', link: 'https://example.com/pr3', type: 'product' },
+const ITEMS = Array.from({ length: 1200 }, (_, index) => {
+    const id = index + 1;
+    const type = ITEM_TYPES[index % ITEM_TYPES.length];
 
-    { id: '10', title: 'CSS Layout Deep Dive', summary: 'Grid, Flexbox, and modern layout patterns.', link: 'https://example.com/a4', type: 'article' },
-    { id: '11', title: 'Katherine Johnson', summary: 'NASA mathematician who broke barriers.', link: 'https://example.com/p4', type: 'person' },
-    { id: '12', title: 'SmartLamp Mini', summary: 'Portable lamp with ambient sensor.', link: 'https://example.com/pr4', type: 'product' },
-
-    { id: '13', title: 'Effective Code Reviews', summary: 'How to review code with empathy and rigor.', link: 'https://example.com/a5', type: 'article' },
-    { id: '14', title: 'Linus Torvalds', summary: 'Creator of Linux kernel and Git.', link: 'https://example.com/p5', type: 'person' },
-    { id: '15', title: 'NoiseCancel Buds', summary: 'Wireless earbuds with ANC.', link: 'https://example.com/pr5', type: 'product' },
-
-    { id: '16', title: 'PostgreSQL Indexing 101', summary: 'Types of indexes and when to use them.', link: 'https://example.com/a6', type: 'article' },
-    { id: '17', title: 'Margaret Hamilton', summary: 'Led Apollo flight software team.', link: 'https://example.com/p6', type: 'person' },
-    { id: '18', title: 'TravelPack 40L', summary: 'Carry-on friendly modular backpack.', link: 'https://example.com/pr6', type: 'product' },
-
-    { id: '19', title: 'Intro to Kubernetes', summary: 'Pods, services, and deployments explained.', link: 'https://example.com/a7', type: 'article' },
-    { id: '20', title: 'Tim Berners-Lee', summary: 'Inventor of the World Wide Web.', link: 'https://example.com/p7', type: 'person' },
-    { id: '21', title: 'HomeHub Router', summary: 'Wi-Fi 6 router with parental controls.', link: 'https://example.com/pr7', type: 'product' },
-
-    { id: '22', title: 'Observability Basics', summary: 'Logs, metrics, and traces for modern apps.', link: 'https://example.com/a8', type: 'article' },
-    { id: '23', title: 'Radia Perlman', summary: 'Mother of the Internet—Spanning Tree Protocol.', link: 'https://example.com/p8', type: 'person' },
-    { id: '24', title: 'ErgoKey MK-II', summary: 'Split mechanical keyboard.', link: 'https://example.com/pr8', type: 'product' },
-
-    { id: '25', title: 'Async JS Patterns', summary: 'Promises, async/await, and streams.', link: 'https://example.com/a9', type: 'article' },
-    { id: '26', title: 'Guido van Rossum', summary: 'Creator of Python.', link: 'https://example.com/p9', type: 'person' },
-    { id: '27', title: 'CleanWater Filter', summary: 'Sink-mounted water filter replacement.', link: 'https://example.com/pr9', type: 'product' },
-
-    { id: '28', title: 'TypeScript Tips', summary: 'Types, generics, and narrowing tricks.', link: 'https://example.com/a10', type: 'article' },
-    { id: '29', title: 'Barbara Liskov', summary: 'LSP and contributions to programming languages.', link: 'https://example.com/p10', type: 'person' },
-    { id: '30', title: 'DeskMate Pro', summary: 'Adjustable standing desk converter.', link: 'https://example.com/pr10', type: 'product' },
-];
+    return {
+        id: String(id),
+        title: `CSS resource ${id} – advanced css techniques`,
+        summary: `This is css item #${id}, covering various css best practices, patterns, and layout techniques.`,
+        link: `https://example.com/css-item-${id}`,
+        type,
+    };
+});
 
 const PDFS = [
     { id: 'p1',  title: 'Annual Report 2024',        summary: 'Company performance and outlook.', link: 'https://example.com/reports/annual-2024.pdf',  type: 'pdf' },
@@ -58,7 +33,7 @@ const PDFS = [
     { id: 'p6',  title: 'Loki Log Pipeline',         summary: 'Ingest and query logs with Loki.', link: 'https://example.com/pdfs/loki-pipeline.pdf', type: 'pdf' },
     { id: 'p7',  title: 'Web Security Checklist',    summary: 'OWASP-style secure-by-default list.', link: 'https://example.com/pdfs/web-sec-checklist.pdf', type: 'pdf' },
     { id: 'p8',  title: 'TypeScript Handbook',       summary: 'Types, generics, narrowing, tips.', link: 'https://example.com/pdfs/typescript-handbook.pdf', type: 'pdf' },
-    { id: 'p9',  title: 'CSS Layout Deep Dive Denys PDF TEST',     summary: 'REST constraints and pitfalls.', link: 'https://example.com/pdfs/api-design-whitepaper.pdf', type: 'pdf' },
+    { id: 'p9',  title: 'CSS Layout Deep Dive Denys PDF TEST', summary: 'REST constraints and pitfalls.', link: 'https://example.com/pdfs/api-design-whitepaper.pdf', type: 'pdf' },
     { id: 'p10', title: 'CI/CD with GitHub Actions', summary: 'Workflows, caching, matrix builds.', link: 'https://example.com/pdfs/gha-cicd.pdf', type: 'pdf' },
     { id: 'p11', title: 'Docker Fundamentals',       summary: 'Images, containers, Compose.', link: 'https://example.com/pdfs/docker-fundamentals.pdf', type: 'pdf' },
     { id: 'p12', title: 'PostgreSQL Tuning',         summary: 'Indexes, query plans, vacuuming.', link: 'https://example.com/pdfs/pgsql-tuning.pdf', type: 'pdf' },
@@ -156,7 +131,8 @@ function makeFuzzyMatcher(query) {
 }
 
 /* -------------------- Routes -------------------- */
-// GET /api/items?type=article,person&size=5&page=2&q=node paterns
+// GET /api/items?type=article,person&size=20&page=1&q=css
+// Perfect for infinite scroll: just call with page = meta.nextPage while hasNext is true.
 app.get('/api/items', (req, res) => {
     const { types, query, size, page } = parseQueryWithTypes(req.query, ['article', 'person', 'product']);
     const match = makeFuzzyMatcher(query);
@@ -169,13 +145,25 @@ app.get('/api/items', (req, res) => {
     const start = (page - 1) * size;
     const slice = data.slice(start, start + size);
 
+    const hasNext = start + size < total;
+    const hasPrev = page > 1;
+
     res.json({
         data: slice,
-        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1, query },
+        meta: {
+            total,
+            page,
+            size,
+            hasNext,
+            hasPrev,
+            nextPage: hasNext ? page + 1 : null,
+            prevPage: hasPrev ? page - 1 : null,
+            query,
+        },
     });
 });
 
-// GET /api/pdfs?type=pdf&size=5&page=2&q=security guide
+// GET /api/pdfs?size=10&page=1&q=css
 app.get('/api/pdfs', (req, res) => {
     const { types, query, size, page } = parseQueryWithTypes(req.query, ['pdf']);
     const match = makeFuzzyMatcher(query);
@@ -188,13 +176,24 @@ app.get('/api/pdfs', (req, res) => {
     const start = (page - 1) * size;
     const slice = data.slice(start, start + size);
 
+    const hasNext = start + size < total;
+    const hasPrev = page > 1;
+
     res.json({
         data: slice,
-        meta: { total, page, size, hasNext: start + size < total, hasPrev: page > 1, query },
+        meta: {
+            total,
+            page,
+            size,
+            hasNext,
+            hasPrev,
+            nextPage: hasNext ? page + 1 : null,
+            prevPage: hasPrev ? page - 1 : null,
+            query,
+        },
     });
 });
 
 /* -------------------- Start -------------------- */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API listening on http://localhost:${PORT}`));
-
