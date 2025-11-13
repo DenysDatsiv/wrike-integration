@@ -20,7 +20,6 @@ const ITEMS = Array.from({ length: 1200 }, (_, index) => {
     const summary = [
         `This is CSS item #${id}, a detailed resource focused on modern layout techniques such as Flexbox, CSS Grid, and responsive typography.`,
         `The article walks through real-world patterns, including complex card layouts, dashboard grids, and adaptive components that behave well across different screen sizes.`,
-        `You’ll also find notes on performance best practices, theming with custom properties (CSS variables), and how to debug tricky cascade and specificity issues in large codebases.`,
     ].join(' ');
 
     return {
