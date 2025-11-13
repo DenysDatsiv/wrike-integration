@@ -15,15 +15,22 @@ const ITEMS = Array.from({ length: 1200 }, (_, index) => {
     const id = index + 1;
     const type = ITEM_TYPES[index % ITEM_TYPES.length];
 
+    const title = `CSS resource ${id} – advanced CSS techniques`;
+
+    const summary = [
+        `This is CSS item #${id}, a detailed resource focused on modern layout techniques such as Flexbox, CSS Grid, and responsive typography.`,
+        `The article walks through real-world patterns, including complex card layouts, dashboard grids, and adaptive components that behave well across different screen sizes.`,
+        `You’ll also find notes on performance best practices, theming with custom properties (CSS variables), and how to debug tricky cascade and specificity issues in large codebases.`,
+    ].join(' ');
+
     return {
         id: String(id),
-        title: `CSS resource ${id} – advanced css techniques`,
-        summary: `This is css item #${id}, covering various css best practices, patterns, and layout techniques.`,
+        title,
+        summary,
         link: `https://example.com/css-item-${id}`,
         type,
     };
 });
-
 const PDFS = [
     { id: 'p1',  title: 'Annual Report 2024',        summary: 'Company performance and outlook.', link: 'https://example.com/reports/annual-2024.pdf',  type: 'pdf' },
     { id: 'p2',  title: 'Kubernetes Cheatsheet',     summary: 'Commands and objects quick reference.', link: 'https://example.com/pdfs/k8s-cheatsheet.pdf', type: 'pdf' },
