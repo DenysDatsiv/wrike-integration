@@ -72,7 +72,10 @@ function parseQueryWithTypes(q, allowedTypes) {
     const page       = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
     const searchType = (q.searchType ?? 'global').toString().toLowerCase();
 
-    return { types, query, size, page, searchType };
+    // persona query: e.g. persona=junior|middle|senior|default
+    const persona    = (q.persona ?? 'default').toString().toLowerCase();
+
+    return { types, query, size, page, searchType, persona };
 }
 
 // normalization / tokenization
@@ -139,14 +142,55 @@ function makeFuzzyMatcher(query) {
     };
 }
 
+// persona-based segmentation: return different data slices per persona
+function applyPersonaSegmentation(data, persona, kind = 'items') {
+    if (!persona || persona === 'default' || persona === 'all') {
+        return data;
+    }
+
+    const p = persona.toLowerCase();
+
+    if (kind === 'items') {
+        // ITEMS has 1200 entries; simple example split
+        if (p === 'junior') {
+            return data.slice(0, 400);
+        }
+        if (p === 'middle') {
+            return data.slice(400, 800);
+        }
+        if (p === 'senior') {
+            return data.slice(800);
+        }
+    } else if (kind === 'pdfs') {
+        // PDFS has 20 entries; simple example split
+        if (p === 'junior') {
+            return data.slice(0, 7);
+        }
+        if (p === 'middle') {
+            return data.slice(7, 14);
+        }
+        if (p === 'senior') {
+            return data.slice(14);
+        }
+    }
+
+    // Unknown persona – fallback
+    return data;
+}
+
 /* -------------------- Routes -------------------- */
 
-// GET /api/items?type=article,person&size=20&page=1&q=css&searchType=global|modal
+// GET /api/items?type=article,person&size=20&page=1&q=css&searchType=global|modal&persona=junior
 app.get('/api/items', (req, res) => {
-    const { types, query, size, page, searchType } = parseQueryWithTypes(req.query, ['article', 'person', 'product']);
+    const { types, query, size, page, searchType, persona } =
+        parseQueryWithTypes(req.query, ['article', 'person', 'product']);
     const match = makeFuzzyMatcher(query);
 
     let data = ITEMS;
+
+    // persona-based segmentation first
+    data = applyPersonaSegmentation(data, persona, 'items');
+
     if (types) data = data.filter(i => types.includes(i.type));
     if (query) data = data.filter(match);
 
@@ -163,12 +207,14 @@ app.get('/api/items', (req, res) => {
                     total: subset.length,
                     size: perCategory,
                     query,
+                    persona,
                 },
             };
         });
 
         return res.json({
             searchType: 'modal',
+            persona,
             categories,
         });
     }
@@ -192,16 +238,22 @@ app.get('/api/items', (req, res) => {
             nextPage: hasNext ? page + 1 : null,
             prevPage: hasPrev ? page - 1 : null,
             query,
+            persona,
         },
     });
 });
 
-// GET /api/pdfs?size=10&page=1&q=css&searchType=global|modal
+// GET /api/pdfs?size=10&page=1&q=css&searchType=global|modal&persona=junior
 app.get('/api/pdfs', (req, res) => {
-    const { types, query, size, page, searchType } = parseQueryWithTypes(req.query, ['pdf']);
+    const { types, query, size, page, searchType, persona } =
+        parseQueryWithTypes(req.query, ['pdf']);
     const match = makeFuzzyMatcher(query);
 
     let data = PDFS;
+
+    // persona-based segmentation
+    data = applyPersonaSegmentation(data, persona, 'pdfs');
+
     if (types) data = data.filter(i => types.includes(i.type)); // practically only 'pdf'
     if (query) data = data.filter(match);
 
@@ -212,6 +264,7 @@ app.get('/api/pdfs', (req, res) => {
 
         return res.json({
             searchType: 'modal',
+            persona,
             categories: {
                 pdf: {
                     data: subset.slice(0, perCategory),
@@ -219,6 +272,7 @@ app.get('/api/pdfs', (req, res) => {
                         total: subset.length,
                         size: perCategory,
                         query,
+                        persona,
                     },
                 },
             },
@@ -244,6 +298,7 @@ app.get('/api/pdfs', (req, res) => {
             nextPage: hasNext ? page + 1 : null,
             prevPage: hasPrev ? page - 1 : null,
             query,
+            persona,
         },
     });
 });
